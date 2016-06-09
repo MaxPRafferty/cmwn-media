@@ -1,0 +1,30 @@
+{
+  "name": "cmwn-media",
+  "version": "1.0.0",
+  "description": "Media Server for Change My World Now",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ginasink/cmwn-media.git"
+  },
+  "author": "Chuck \"MANCHUCK\" Reeves <chuck@manchuck.com>",
+  "license": "UNLICENSED",
+  "bugs": {
+    "url": "https://github.com/ginasink/cmwn-media/issues"
+  },
+  "homepage": "https://github.com/ginasink/cmwn-media#readme",
+  "dependencies": {
+    "express": "^4.13.4",
+    "lodash": "^4.13.1"
+  },
+  "devDependencies": {
+    "babel-eslint": "^6.0.4",
+    "eslint": "^2.11.1",
+    "eslint-plugin-babel": "^3.2.0",
+    "gulp": "^3.9.1",
+    "gulp-eslint": "^2.0.0"
+  }
+}

@@ -1,0 +1,7 @@
+{
+   "env": {
+        "mocha": false,
+        "node": false,
+        "phantomjs": false
+    }
+}
