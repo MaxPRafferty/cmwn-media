@@ -1,8 +1,46 @@
 var express = require('express');
 var app = express();
+var path = require('path');
+var fs = require('fs');
+var service = require('./xmlService.js');
 
-app.get('/', function (req, res) {
-    res.send('Hello World!');
+// query the asset
+app.get(/^\/a\/{0,1}(.+)?/i, function (req, res) {
+    'use strict';
+    console.log(req.url);
+    console.log(req.params);
+
+    var assetId = req.params[0];
+    console.log('Asset Id: ' + assetId);
+
+    if (assetId === undefined) {
+        console.log('No Asset requested returning page');
+        var page = req.query.page || 1;
+        var perPage = req.query.per_page || 10;
+
+        res.send(service.getPage('/f/', page, perPage));
+        return;
+    }
+
+    res.send(service.getAsset(assetId));
+});
+
+// Serve the asset
+app.get('/f/*', function (req, res) {
+    'use strict';
+    var fileName = path.normalize(__dirname + '/../media' + decodeURI(req.url.substring(2)));
+    fs.stat(fileName, function (err, stats) {
+        if (stats && stats.isFile()) {
+            res.sendFile(fileName);
+            return;
+        }
+
+        if (err) {
+            console.log(err);
+        }
+
+        res.status(404).send('Not Found');
+    });
 });
 
 app.listen(3000, function () {
