@@ -1,10 +1,9 @@
 var fs = require('fs');
 var xpath = require('xpath');
-var DOMParser = require('xmldom').DOMParser;
-var xmlString = fs.readFileSync(__dirname + '/api.xml');
+var jsonString = fs.readFileSync(__dirname + '/api.json');
 
 console.log('Loading xml');
-var doc = new DOMParser().parseFromString(xmlString.toString('utf8'), 'text/xml');
+var doc = JSON.parse(jsonString.toString('utf8'));
 var exports = module.exports = {};
 
 var boxSDK = require('box-sdk');
@@ -61,10 +60,10 @@ exports.getPage = function (srcUrl, page, perPage) {
     return foundAssets;
 };
 
-exports.getAsset = function (assetId) {
+exports.getAsset = function (assetId, r) {
     'use strict';
 
-    var results;
+    assetId = assetId || 0;
 
     console.log('Finding Asset: ' + assetId);
     // var results = xpath.select('//item/asset_id[text()="' + assetId + '"]', doc);
@@ -76,14 +75,17 @@ exports.getAsset = function (assetId) {
 
     connection.ready(function () {
         console.log('ready');
-        connection.getFolderItems(0, {limit: 10}, function (err, result) {
-            console.log('getFolderItems');
-            if (err) {
-                console.error(JSON.stringify(err.context_info));
+        connection.getFolderInfo(
+            assetId,
+            function (err, result) {
+                console.log('getFolderItems');
+                if (err) {
+                    console.error(JSON.stringify(err.context_info));
+                }
+                console.dir(result);
+                r(result);
             }
-            console.dir(result);
-            results = result;
-        });
+        );
     });
 
     // return convertRecordToObject(results);

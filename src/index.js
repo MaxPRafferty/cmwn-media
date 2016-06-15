@@ -2,7 +2,7 @@ var express = require('express');
 var app = express();
 var path = require('path');
 var fs = require('fs');
-var service = require('./xmlService.js');
+var service = require('./jsonService.js');
 
 // query the asset
 app.get(/^\/a\/{0,1}(.+)?/i, function (req, res) {
@@ -22,7 +22,18 @@ app.get(/^\/a\/{0,1}(.+)?/i, function (req, res) {
         return;
     }
 
-    res.send(service.getAsset(assetId));
+    var r;
+    var p = new Promise(resolve => {
+        r = data => {
+            resolve(data);
+        };
+    });
+
+    p.then(data => {
+        res.send(data);
+    });
+
+    service.getAsset(assetId, r);
 });
 
 // Serve the asset
