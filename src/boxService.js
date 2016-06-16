@@ -20,6 +20,7 @@ function getItemObject(item) {
 
     if (item.type === 'file') {
         return {
+            type: item.type,
             id: item.id,
             name: item.name,
             url: item.shared_link ? item.shared_link.download_url : ''
@@ -39,7 +40,7 @@ exports.getAssetInfoByPath = function (query, r) {
 
     query = query || '';
 
-    console.log('Finding Asset: ' + query);
+    console.log('Finding Asset by Path: ' + query);
 
     var connection = box.getConnection('admin@changemyworldnow.com');
 
@@ -69,7 +70,12 @@ exports.getAssetInfoByPath = function (query, r) {
                         r(null);
                     } else if (entries.length === 1) {
                         console.dir(entries[0]);
-                        r(getItemObject(entries[0]));
+
+                        if (entries[0].type === 'folder') {
+                            exports.getAssetInfo(entries[0].id, r);
+                        } else {
+                            r(getItemObject(entries[0]));
+                        }
                     } else {
                         entries = entries.filter(function (entry) {
                             var pathCollection = entry.path_collection.entries.map(function (item) {
@@ -82,8 +88,14 @@ exports.getAssetInfoByPath = function (query, r) {
                             }
                             return true;
                         });
+
                         console.dir(entries[0]);
-                        r(getItemObject(entries[0]));
+
+                        if (entries[0].type === 'folder') {
+                            exports.getAssetInfo(entries[0].id, r);
+                        } else {
+                            r(getItemObject(entries[0]));
+                        }
                     }
                 }
             }
