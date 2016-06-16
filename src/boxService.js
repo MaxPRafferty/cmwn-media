@@ -1,0 +1,134 @@
+console.log('Loading xml');
+var exports = module.exports = {};
+
+var boxSDK = require('box-sdk');
+
+var logLevel = 'debug'; //default log level on construction is info
+
+//Default host: localhost
+var box = boxSDK.Box({
+    'client_id': 'skhyf94wbjwcx0ax35b83mnwq01xtvrp',
+    'client_secret': 'LRO7OVEGYd1qnjeU6BbobvLl29DvJGWr',
+    port: 9999,
+    // host: 'somehost' //default localhost
+}, logLevel);
+
+function getItemObject(item) {
+    if (!item) {
+        return;
+    }
+
+    if (item.type === 'file') {
+        return {
+            id: item.id,
+            name: item.name
+        };
+    }
+
+    return {
+        type: item.type,
+        id: item.id,
+        name: item.name,
+        items: item.item_collection ? item.item_collection.entries : []
+    };
+}
+
+exports.getAssetInfoByPath = function (query, r) {
+    'use strict';
+
+    query = query || '';
+
+    console.log('Finding Asset: ' + query);
+
+    var connection = box.getConnection('admin@changemyworldnow.com');
+
+    //Navigate user to the auth URL
+    console.log(connection.getAuthURL());
+
+    connection.ready(function () {
+        console.log('ready');
+        connection.search(
+            query,
+            null,
+            function (err, result) {
+                console.log('getFolderItems');
+                if (err) {
+                    console.error(JSON.stringify(err.context_info));
+                }
+
+                var path = query.split('/');
+                var name = path[path.length - 1];
+
+                if (result.entries) {
+                    var entries = result.entries.filter(function (entry) {
+                        console.log(entry.name);
+                        console.log(name);
+                        return entry.name.indexOf(name) !== -1;
+                    });
+
+                    if (!entries.length) {
+                        r(null);
+                    } else if (entries.length === 1) {
+                        console.dir(entries[0]);
+                        r(getItemObject(entries[0]));
+                    } else {
+                        entries.filter(function (entry) {
+                            
+                        });
+                        r(entries);
+                    }
+                }
+            }
+        );
+    });
+
+    // return convertRecordToObject(results);
+};
+
+exports.getAssetInfo = function (assetId, r) {
+    'use strict';
+
+    assetId = assetId || 0;
+
+    console.log('Finding Asset: ' + assetId);
+    // var results = xpath.select('//item/asset_id[text()="' + assetId + '"]', doc);
+
+    var connection = box.getConnection('admin@changemyworldnow.com');
+
+    //Navigate user to the auth URL
+    console.log(connection.getAuthURL());
+
+    connection.ready(function () {
+        connection.getFileInfo(
+            assetId,
+            function (fileErr, fileResult) {
+                if (fileErr) {
+                    console.error(JSON.stringify(fileErr.context_info));
+                }
+
+                if (fileResult) {
+                    let fileObj = getItemObject(fileResult);
+
+                    console.dir(fileObj);
+                    r(fileObj);
+                } else {
+                    connection.getFolderInfo(
+                        assetId,
+                        function (folderErr, folderResult) {
+                            if (folderErr) {
+                                console.error(JSON.stringify(folderErr.context_info));
+                            }
+
+                            if (folderResult) {
+                                let folderObj = getItemObject(folderResult);
+
+                                console.dir(folderObj);
+                                r(folderObj);
+                            }
+                        }
+                    );
+                }
+            }
+        );
+    });
+};

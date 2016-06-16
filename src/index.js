@@ -2,7 +2,7 @@ var express = require('express');
 var app = express();
 var path = require('path');
 var fs = require('fs');
-var service = require('./jsonService.js');
+var service = require('./boxService.js');
 
 // query the asset
 app.get(/^\/a\/{0,1}(.+)?/i, function (req, res) {
@@ -33,7 +33,11 @@ app.get(/^\/a\/{0,1}(.+)?/i, function (req, res) {
         res.send(data);
     });
 
-    service.getAsset(assetId, r);
+    if ('' + parseInt(assetId, 10) === assetId) {
+        service.getAssetInfo(assetId, r);
+    } else {
+        service.getAssetInfoByPath(assetId, r);
+    }
 });
 
 // Serve the asset
