@@ -1,7 +1,7 @@
 var express = require('express');
 var app = express();
-var path = require('path');
-var fs = require('fs');
+// var path = require('path');
+// var fs = require('fs');
 var service = require('./boxService.js');
 
 // query the asset
@@ -43,19 +43,42 @@ app.get(/^\/a\/{0,1}(.+)?/i, function (req, res) {
 // Serve the asset
 app.get('/f/*', function (req, res) {
     'use strict';
-    var fileName = path.normalize(__dirname + '/../media' + decodeURI(req.url.substring(2)));
-    fs.stat(fileName, function (err, stats) {
-        if (stats && stats.isFile()) {
-            res.sendFile(fileName);
-            return;
-        }
+    console.log(req.url);
+    console.log(req.params);
 
-        if (err) {
-            console.log(err);
-        }
+    var assetId = req.params[0];
+    console.log('Asset Id: ' + assetId);
 
-        res.status(404).send('Not Found');
+    if (assetId === undefined) {
+        console.log('No Asset requested returning page');
+        var page = req.query.page || 1;
+        var perPage = req.query.per_page || 10;
+
+        res.send(service.getPage('/f/', page, perPage));
+        return;
+    }
+
+    var r;
+    var p = new Promise(resolve => {
+        r = data => {
+            resolve(data);
+        };
     });
+
+    p.then(data => {
+        if (data.url) {
+            res.writeHead(302, {
+                'Location': data.url
+            });
+            res.end();
+        }
+    });
+
+    if ('' + parseInt(assetId, 10) === assetId) {
+        service.getAssetInfo(assetId, r);
+    } else {
+        service.getAssetInfoByPath(assetId, r);
+    }
 });
 
 app.listen(3000, function () {

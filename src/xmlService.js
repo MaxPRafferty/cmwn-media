@@ -64,8 +64,6 @@ exports.getPage = function (srcUrl, page, perPage) {
 exports.getAsset = function (assetId) {
     'use strict';
 
-    var results;
-
     console.log('Finding Asset: ' + assetId);
     // var results = xpath.select('//item/asset_id[text()="' + assetId + '"]', doc);
 
@@ -82,7 +80,6 @@ exports.getAsset = function (assetId) {
                 console.error(JSON.stringify(err.context_info));
             }
             console.dir(result);
-            results = result;
         });
     });
 
