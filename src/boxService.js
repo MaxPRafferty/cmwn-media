@@ -14,6 +14,8 @@ var box = boxSDK.Box({
 }, logLevel);
 
 function getItemObject(item) {
+    var items;
+
     if (!item) {
         return;
     }
@@ -27,11 +29,15 @@ function getItemObject(item) {
         };
     }
 
+    items = (item.item_collection ? item.item_collection.entries : []).map(function (i) {
+        return getItemObject(i);
+    });
+
     return {
         type: item.type,
         id: item.id,
         name: item.name,
-        items: item.item_collection ? item.item_collection.entries : []
+        items: items
     };
 }
 
