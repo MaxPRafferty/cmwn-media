@@ -69,8 +69,6 @@ exports.getAssetInfoByPath = function (query, r) {
                     if (!entries.length) {
                         r(null);
                     } else if (entries.length === 1) {
-                        console.dir(entries[0]);
-
                         if (entries[0].type === 'folder') {
                             exports.getAssetInfo(entries[0].id, r);
                         } else {
@@ -140,8 +138,6 @@ exports.getAssetInfo = function (assetId, r) {
 
                             if (folderResult) {
                                 let folderObj = getItemObject(folderResult);
-
-                                console.dir(folderObj);
                                 r(folderObj);
                             }
                         }
@@ -189,8 +185,6 @@ exports.getAsset = function (assetId, r) {
 
                             if (folderResult) {
                                 let folderObj = getItemObject(folderResult);
-
-                                console.dir(folderObj);
                                 r(folderObj);
                             }
                         }

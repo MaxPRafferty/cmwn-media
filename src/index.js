@@ -2,6 +2,8 @@ var express = require('express');
 var app = express();
 // var path = require('path');
 // var fs = require('fs');
+// var http = require('http');
+var request = require('request');
 var service = require('./boxService.js');
 
 // query the asset
@@ -67,10 +69,13 @@ app.get('/f/*', function (req, res) {
 
     p.then(data => {
         if (data.url) {
-            res.writeHead(302, {
-                'Location': data.url
+            request({url: data.url, encoding: null}, function (err, ires, body) {
+                if (!err && ires.statusCode === 200) {
+                    res.send(body);
+                } else {
+                    res.send('Image cannot be found.');
+                }
             });
-            res.end();
         }
     });
 
