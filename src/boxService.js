@@ -20,12 +20,15 @@ function getItemObject(item) {
         return;
     }
 
+    console.log(item);
+
     if (item.type === 'file') {
         return {
             type: item.type,
             id: item.id,
             name: item.name,
-            url: item.shared_link ? item.shared_link.download_url : ''
+            url: item.shared_link ? item.shared_link.download_url : '',
+            tags: item.tags
         };
     }
 
@@ -37,6 +40,7 @@ function getItemObject(item) {
         type: item.type,
         id: item.id,
         name: item.name,
+        tags: item.tags,
         items: items
     };
 }
@@ -75,11 +79,7 @@ exports.getAssetInfoByPath = function (query, r) {
                     if (!entries.length) {
                         r(null);
                     } else if (entries.length === 1) {
-                        if (entries[0].type === 'folder') {
-                            exports.getAssetInfo(entries[0].id, r);
-                        } else {
-                            r(getItemObject(entries[0]));
-                        }
+                        exports.getAssetInfo(entries[0].id, r);
                     } else {
                         entries = entries.filter(function (entry) {
                             var pathCollection = entry.path_collection.entries.map(function (item) {
@@ -95,11 +95,7 @@ exports.getAssetInfoByPath = function (query, r) {
 
                         console.dir(entries[0]);
 
-                        if (entries[0].type === 'folder') {
-                            exports.getAssetInfo(entries[0].id, r);
-                        } else {
-                            r(getItemObject(entries[0]));
-                        }
+                        exports.getAssetInfo(entries[0].id, r);
                     }
                 }
             }
@@ -122,7 +118,7 @@ exports.getAssetInfo = function (assetId, r) {
 
     connection.ready(function () {
         connection.getFileInfo(
-            assetId,
+            assetId + '?fields=type,id,name,shared_link,tags',
             function (fileErr, fileResult) {
                 if (fileErr) {
                     console.error(JSON.stringify(fileErr.context_info));
@@ -136,7 +132,7 @@ exports.getAssetInfo = function (assetId, r) {
                     // r(fileResult);
                 } else {
                     connection.getFolderInfo(
-                        assetId,
+                        assetId + '?fields=type,id,name,item_collection,tags',
                         function (folderErr, folderResult) {
                             if (folderErr) {
                                 console.error(JSON.stringify(folderErr.context_info));
