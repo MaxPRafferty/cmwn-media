@@ -20,8 +20,6 @@ function getItemObject(item) {
         return;
     }
 
-    console.log(item);
-
     if (item.type === 'file') {
         return {
             type: item.type,
