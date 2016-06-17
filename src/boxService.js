@@ -2,16 +2,15 @@ console.log('Loading xml');
 var exports = module.exports = {};
 
 var boxSDK = require('box-sdk');
-
-var logLevel = 'debug'; //default log level on construction is info
+var config = require('./config.json');
 
 //Default host: localhost
 var box = boxSDK.Box({
-    'client_id': 'skhyf94wbjwcx0ax35b83mnwq01xtvrp',
-    'client_secret': 'LRO7OVEGYd1qnjeU6BbobvLl29DvJGWr',
+    'client_id': config.client_id,
+    'client_secret': config.client_secret,
     port: 9999,
     // host: 'somehost' //default localhost
-}, logLevel);
+}, config.logLevel);
 
 function getItemObject(item) {
     var items;
@@ -50,7 +49,7 @@ exports.getAssetInfoByPath = function (query, r) {
 
     console.log('Finding Asset by Path: ' + query);
 
-    var connection = box.getConnection('admin@changemyworldnow.com');
+    var connection = box.getConnection(config.client_email);
 
     //Navigate user to the auth URL
     console.log(connection.getAuthURL());
