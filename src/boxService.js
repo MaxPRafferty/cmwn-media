@@ -63,6 +63,7 @@ exports.getAssetInfoByPath = function (query, r) {
                 console.log('getFolderItems');
                 if (err) {
                     console.error(JSON.stringify(err.context_info));
+                    r();
                 }
 
                 var path = query.split('/');
@@ -108,7 +109,7 @@ exports.getAssetInfo = function (assetId, r) {
     console.log('Finding Asset: ' + assetId);
     // var results = xpath.select('//item/asset_id[text()="' + assetId + '"]', doc);
 
-    var connection = box.getConnection('admin@changemyworldnow.com');
+    var connection = box.getConnection(config.client_email);
 
     //Navigate user to the auth URL
     console.log(connection.getAuthURL());
@@ -119,6 +120,7 @@ exports.getAssetInfo = function (assetId, r) {
             function (fileErr, fileResult) {
                 if (fileErr) {
                     console.error(JSON.stringify(fileErr.context_info));
+                    r();
                 }
 
                 if (fileResult) {
@@ -126,7 +128,6 @@ exports.getAssetInfo = function (assetId, r) {
 
                     console.dir(fileObj);
                     r(fileObj);
-                    // r(fileResult);
                 } else {
                     connection.getFolderInfo(
                         assetId + '?fields=type,id,name,item_collection,tags',
@@ -155,7 +156,7 @@ exports.getAsset = function (assetId, r) {
     console.log('Getting Asset: ' + assetId);
     // var results = xpath.select('//item/asset_id[text()="' + assetId + '"]', doc);
 
-    var connection = box.getConnection('admin@changemyworldnow.com');
+    var connection = box.getConnection(config.client_email);
 
     //Navigate user to the auth URL
     console.log(connection.getAuthURL());
@@ -168,6 +169,7 @@ exports.getAsset = function (assetId, r) {
             function (fileErr, fileResult) {
                 if (fileErr) {
                     console.error(JSON.stringify(fileErr.context_info));
+                    r();
                 }
 
                 if (fileResult) {

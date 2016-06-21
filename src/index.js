@@ -12,17 +12,8 @@ app.get(/^\/a\/{0,1}(.+)?/i, function (req, res) {
     console.log(req.url);
     console.log(req.params);
 
-    var assetId = req.params[0];
+    var assetId = req.params[0] || '0';
     console.log('Asset Id: ' + assetId);
-
-    if (assetId === undefined) {
-        console.log('No Asset requested returning page');
-        var page = req.query.page || 1;
-        var perPage = req.query.per_page || 10;
-
-        res.send(service.getPage('/f/', page, perPage));
-        return;
-    }
 
     var r;
     var p = new Promise(resolve => {
@@ -32,7 +23,11 @@ app.get(/^\/a\/{0,1}(.+)?/i, function (req, res) {
     });
 
     p.then(data => {
-        res.send(data);
+        if (data) {
+            res.send(data);
+        } else {
+            res.status(404).send('Not Found');
+        }
     });
 
     if ('' + parseInt(assetId, 10) === assetId) {
@@ -48,17 +43,8 @@ app.get('/f/*', function (req, res) {
     console.log(req.url);
     console.log(req.params);
 
-    var assetId = req.params[0];
+    var assetId = req.params[0] || '0';
     console.log('Asset Id: ' + assetId);
-
-    if (assetId === undefined) {
-        console.log('No Asset requested returning page');
-        var page = req.query.page || 1;
-        var perPage = req.query.per_page || 10;
-
-        res.send(service.getPage('/f/', page, perPage));
-        return;
-    }
 
     var r;
     var p = new Promise(resolve => {
@@ -76,6 +62,8 @@ app.get('/f/*', function (req, res) {
                     res.send('Image cannot be found.');
                 }
             });
+        } else {
+            res.status(404).send('Not Found');
         }
     });
 

@@ -7,18 +7,6 @@ console.log('Loading xml');
 var doc = new DOMParser().parseFromString(xmlString.toString('utf8'), 'text/xml');
 var exports = module.exports = {};
 
-var boxSDK = require('box-sdk');
-
-var logLevel = 'debug'; //default log level on construction is info
-
-//Default host: localhost
-var box = boxSDK.Box({
-    'client_id': 'skhyf94wbjwcx0ax35b83mnwq01xtvrp',
-    'client_secret': 'LRO7OVEGYd1qnjeU6BbobvLl29DvJGWr',
-    port: 9999,
-    // host: 'somehost' //default localhost
-}, logLevel);
-
 function convertRecordToObject(record) {
     'use strict';
     var asset = {};
@@ -42,8 +30,8 @@ function convertRecordToObject(record) {
 
 exports.getPage = function (srcUrl, page, perPage) {
     'use strict';
-    page = parseInt(page, 10) || 1;
-    perPage = parseInt(perPage, 10) || 10;
+    page = parseInt(page) || 1;
+    perPage = parseInt(perPage) || 10;
     var start = page * perPage;
     var end = start + perPage;
 
@@ -65,23 +53,8 @@ exports.getAsset = function (assetId) {
     'use strict';
 
     console.log('Finding Asset: ' + assetId);
-    // var results = xpath.select('//item/asset_id[text()="' + assetId + '"]', doc);
+    var results = xpath.select('//item/asset_id[text()="' + assetId + '"]', doc);
+    console.log('# results: ' + results.length);
 
-    var connection = box.getConnection('admin@changemyworldnow.com');
-
-    //Navigate user to the auth URL
-    console.log(connection.getAuthURL());
-
-    connection.ready(function () {
-        console.log('ready');
-        connection.getFolderItems(0, {limit: 10}, function (err, result) {
-            console.log('getFolderItems');
-            if (err) {
-                console.error(JSON.stringify(err.context_info));
-            }
-            console.dir(result);
-        });
-    });
-
-    // return convertRecordToObject(results);
+    return convertRecordToObject(results[0].parentNode);
 };
