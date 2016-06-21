@@ -59,7 +59,7 @@ app.get('/f/*', function (req, res) {
                 if (!err && ires.statusCode === 200) {
                     res.send(body);
                 } else {
-                    res.send('Image cannot be found.');
+                    res.status(404).send('Not Found');
                 }
             });
         } else {
