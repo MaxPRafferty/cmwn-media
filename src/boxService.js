@@ -13,33 +13,30 @@ var box = boxSDK.Box({
 }, config.logLevel);
 
 function getItemObject(item) {
-    var items;
+    var obj;
 
     if (!item) {
         return;
     }
 
-    if (item.type === 'file') {
-        return {
-            type: item.type,
-            id: item.id,
-            name: item.name,
-            url: item.shared_link ? item.shared_link.download_url : '',
-            tags: item.tags
-        };
-    }
-
-    items = (item.item_collection ? item.item_collection.entries : []).map(function (i) {
-        return getItemObject(i);
-    });
-
-    return {
+    obj = {
         type: item.type,
         id: item.id,
         name: item.name,
-        tags: item.tags,
-        items: items
+        tags: item.tags
     };
+
+    if (item.type === 'file' && item.shared_link) {
+        obj.url = item.shared_link.download_url;
+    }
+
+    if (item.item_collection) {
+        obj.items = item.item_collection.entries.map(function (i) {
+            return getItemObject(i);
+        });
+    }
+
+    return obj;
 }
 
 /*
@@ -126,11 +123,6 @@ exports.getAssetInfo = function (assetId, r) {
         connection.getFileInfo(
             assetId + '?fields=type,id,name,shared_link,tags',
             function (fileErr, fileResult) {
-                if (fileErr) {
-                    console.error(JSON.stringify(fileErr.context_info));
-                    r();
-                }
-
                 if (fileResult) {
                     let fileObj = getItemObject(fileResult);
 
@@ -142,6 +134,7 @@ exports.getAssetInfo = function (assetId, r) {
                         function (folderErr, folderResult) {
                             if (folderErr) {
                                 console.error(JSON.stringify(folderErr.context_info));
+                                r();
                             }
 
                             if (folderResult) {
