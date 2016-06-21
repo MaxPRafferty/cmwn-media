@@ -42,6 +42,10 @@ function getItemObject(item) {
     };
 }
 
+/*
+ * @param query (string) the query string to search
+ * @param r (function) the function the calls the resolve for the Promise
+ */
 exports.getAssetInfoByPath = function (query, r) {
     'use strict';
 
@@ -75,7 +79,7 @@ exports.getAssetInfoByPath = function (query, r) {
                     });
 
                     if (!entries.length) {
-                        r(null);
+                        r();
                     } else if (entries.length === 1) {
                         exports.getAssetInfo(entries[0].id, r);
                     } else {
@@ -101,6 +105,10 @@ exports.getAssetInfoByPath = function (query, r) {
     });
 };
 
+/*
+ * @param assetId (string) the id of the file or folder to find
+ * @param r (function) the function the calls the resolve for the Promise
+ */
 exports.getAssetInfo = function (assetId, r) {
     'use strict';
 
@@ -148,6 +156,10 @@ exports.getAssetInfo = function (assetId, r) {
     });
 };
 
+/*
+ * @param assetId (string) the id of the file or folder to find
+ * @param r (function) the function the calls the resolve for the Promise
+ */
 exports.getAsset = function (assetId, r) {
     'use strict';
 
