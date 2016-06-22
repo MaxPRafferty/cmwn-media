@@ -17,21 +17,33 @@ var connection = box.getConnection(config.client_email);
 
 function getItemObject(item) {
     'use strict';
-    var obj;
+    var obj, tags;
 
     if (!item) {
         return;
     }
 
+    tags = item.tags || [];
+
     obj = {
+        'asset_type': 'item',
         type: item.type,
-        id: item.id,
+        'media_id': item.id,
         name: item.name,
-        tags: item.tags
+        'can_overlap': false,
+        tags
     };
 
+    tags.forEach(tag => {
+        if (tag.indexOf('asset_type') === 0) {
+            obj.asset_type = tag.split('-')[1]; // eslint-disable-line camelcase
+        } else if (tag === 'can_overlap') {
+            obj.can_overlap = true; // eslint-disable-line camelcase
+        }
+    });
+
     if (item.type === 'file' && item.shared_link) {
-        obj.url = item.shared_link.download_url;
+        obj.src = item.shared_link.download_url;
     }
 
     if (item.item_collection) {
