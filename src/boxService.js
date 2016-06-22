@@ -1,18 +1,22 @@
-console.log('Loading xml');
 var exports = module.exports = {};
-
+var Log = require('log');
+var log = new Log();
 var boxSDK = require('box-sdk');
 var config = require('./config.json');
+var env = config.env;
 
 //Default host: localhost
 var box = boxSDK.Box({
     'client_id': config.client_id,
     'client_secret': config.client_secret,
-    port: 9999,
-    // host: 'somehost' //default localhost
+    'port': 9999,
+    'host': config.host || 'localhost'
 }, config.logLevel);
 
+var connection = box.getConnection(config.client_email);
+
 function getItemObject(item) {
+    'use strict';
     var obj;
 
     if (!item) {
@@ -39,6 +43,49 @@ function getItemObject(item) {
     return obj;
 }
 
+exports.init = function (storage) {
+    'use strict';
+
+    connection.on('tokens.set', function () {
+        var saveData = {
+            'access_token': connection.access_token,
+            'expires_in': connection.expires_in,
+            'restricted_to': connection.restricted_to,
+            'refresh_token': connection.refresh_token,
+            'token_type': connection.token_type
+        };
+
+        log.info(saveData);
+        log.debug('Saving tokens to the database');
+        storage.save(env, saveData, function (err, data) {
+            if (err) {
+                console.error('Unable to add item. Error JSON:', JSON.stringify(err, null, 2));
+            } else {
+                log.debug('Added item:', JSON.stringify(data, null, 2));
+            }
+        });
+    });
+
+    storage.load(env, function (err, data) {
+        if (err) {
+            console.error('Unable to read item. Error JSON:', JSON.stringify(err, null, 2));
+            return ;
+        }
+
+        var itemData = data.Item || {};
+        var oauthData = itemData.data || {};
+
+        if (oauthData.refresh_token === undefined) {  // eslint-disable-line unresolved
+            log.debug('No refresh token set');
+            log.info('Please Authenticate to box Api: ', connection.getAuthURL());
+            return;
+        }
+
+        log.debug('Loaded existing tokens', oauthData);
+        connection._setTokens(oauthData);
+    });
+};
+
 /*
  * @param query (string) the query string to search
  * @param r (function) the function the calls the resolve for the Promise
@@ -48,29 +95,25 @@ exports.getAssetInfoByPath = function (query, r) {
 
     query = query || '';
 
-    console.log('Finding Asset by Path: ' + query);
-
-    var connection = box.getConnection(config.client_email);
-
+    log.debug('Finding Asset by Path: ' + query);
     //Navigate user to the auth URL
-    console.log(connection.getAuthURL());
-
     connection.ready(function () {
-        console.log('ready');
+        log.debug('ready getAssetInfoByPath');
         connection.search(
             query,
             null,
             function (err, result) {
-                console.log('getFolderItems');
+                log.debug('getAssetInfoByPath');
                 if (err) {
-                    console.error(JSON.stringify(err.context_info));
+                    log.error(JSON.stringify(err.context_info));
                     r();
                 }
 
                 var path = query.split('/');
                 var name = path[path.length - 1];
 
-                if (result.entries) {
+                if (result && result.entries) {
+                    log.info('Data found for search');
                     var entries = result.entries.filter(function (entry) {
                         return entry.name === name;
                     });
@@ -92,10 +135,11 @@ exports.getAssetInfoByPath = function (query, r) {
                             return true;
                         });
 
-                        console.dir(entries[0]);
-
+                        log.info(entries[0]);
                         exports.getAssetInfo(entries[0].id, r);
                     }
+                } else {
+                    log.debug('No Results found');
                 }
             }
         );
@@ -111,24 +155,26 @@ exports.getAssetInfo = function (assetId, r) {
 
     assetId = assetId || 0;
 
-    console.log('Finding Asset: ' + assetId);
-    // var results = xpath.select('//item/asset_id[text()="' + assetId + '"]', doc);
-
-    var connection = box.getConnection(config.client_email);
+    log.debug('Finding Asset: ' + assetId);
 
     //Navigate user to the auth URL
-    console.log(connection.getAuthURL());
-
     connection.ready(function () {
+        log.debug('getAssetInfo Ready');
         connection.getFileInfo(
             assetId + '?fields=type,id,name,shared_link,tags',
             function (fileErr, fileResult) {
-                if (fileResult) {
-                    let fileObj = getItemObject(fileResult);
+                if (fileErr) {
+                    log.error(fileErr);
+                    r();
+                    return;
+                }
 
-                    console.dir(fileObj);
+                if (fileResult) {
+                    log.info('We have a file');
+                    let fileObj = getItemObject(fileResult);
                     r(fileObj);
                 } else {
+                    log.info('We have a folder');
                     connection.getFolderInfo(
                         assetId + '?fields=type,id,name,item_collection,tags',
                         function (folderErr, folderResult) {
@@ -158,14 +204,9 @@ exports.getAsset = function (assetId, r) {
 
     assetId = assetId || 0;
 
-    console.log('Getting Asset: ' + assetId);
-    // var results = xpath.select('//item/asset_id[text()="' + assetId + '"]', doc);
-
-    var connection = box.getConnection(config.client_email);
+    log.debug('Getting Asset: ' + assetId);
 
     //Navigate user to the auth URL
-    console.log(connection.getAuthURL());
-
     connection.ready(function () {
         connection.getFile(
             assetId,
@@ -178,10 +219,10 @@ exports.getAsset = function (assetId, r) {
                 }
 
                 if (fileResult) {
-                    console.log('found it');
+                    log.debug('found it');
                     r(fileResult);
                 } else {
-                    console.log('didnt find it');
+                    log.debug('didnt find it');
                     connection.getFolderInfo(
                         assetId,
                         function (folderErr, folderResult) {

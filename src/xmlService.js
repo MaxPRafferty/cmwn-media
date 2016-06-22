@@ -30,8 +30,8 @@ function convertRecordToObject(record) {
 
 exports.getPage = function (srcUrl, page, perPage) {
     'use strict';
-    page = parseInt(page) || 1;
-    perPage = parseInt(perPage) || 10;
+    page = parseInt(page, 1) || 1;
+    perPage = parseInt(perPage, 1) || 10;
     var start = page * perPage;
     var end = start + perPage;
 

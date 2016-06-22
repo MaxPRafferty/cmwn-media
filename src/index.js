@@ -1,19 +1,19 @@
+var Log = require('log');
+var log = new Log('info');
 var express = require('express');
 var app = express();
-// var path = require('path');
-// var fs = require('fs');
-// var http = require('http');
 var request = require('request');
 var service = require('./boxService.js');
+var storage = require('./storage.js');
 
 // query the asset
 app.get(/^\/a\/{0,1}(.+)?/i, function (req, res) {
     'use strict';
-    console.log(req.url);
-    console.log(req.params);
+    log.debug(req.url);
+    log.debug(req.params);
 
     var assetId = req.params[0] || '0';
-    console.log('Asset Id: ' + assetId);
+    log.debug('Asset Id: ' + assetId);
 
     var r;
     var p = new Promise(resolve => {
@@ -40,11 +40,11 @@ app.get(/^\/a\/{0,1}(.+)?/i, function (req, res) {
 // Serve the asset
 app.get('/f/*', function (req, res) {
     'use strict';
-    console.log(req.url);
-    console.log(req.params);
+    log.debug(req.url);
+    log.debug(req.params);
 
     var assetId = req.params[0] || '0';
-    console.log('Asset Id: ' + assetId);
+    log.debug('Asset Id: ' + assetId);
 
     var r;
     var p = new Promise(resolve => {
@@ -75,5 +75,6 @@ app.get('/f/*', function (req, res) {
 });
 
 app.listen(3000, function () {
-    console.log('Example app listening on port 3000!');
+    service.init(storage);
+    log.debug('Example app listening on port 3000!');
 });

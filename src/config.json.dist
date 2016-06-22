@@ -1,6 +1,7 @@
 {
-  "client_id": "esergergWEwefewqw4e2321334",
-  "client_secret": "LRO7OVEasdU6BbobvLl29DvJGWr",
-  "client_email": "admin@changemyworldnow.com",
-  "logLevel": "debug"
+    "client_id": "<box client id>",
+    "client_secret": "<box client secret>",
+    "client_email": "<box client email>",
+    "logLevel": "debug",
+    "env": "local"
 }
