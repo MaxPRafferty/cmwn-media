@@ -60,7 +60,7 @@ function getItemObject(item, r) {
 
         if (item.shared_link) {
             obj.src = item.shared_link.download_url;
-            waitOn += 1;
+            waitOn++;
 
             request(obj.src, {method: 'HEAD'}, function (err, res){
                 obj.mime_type = res.headers['content-type']; // eslint-disable-line camelcase
@@ -106,11 +106,6 @@ function getChildItemObject(item) {
     });
 
     if (item.type === 'file') {
-        obj.check = {
-            type: 'sha1',
-            value: item.sha1
-        };
-
         if (item.shared_link) {
             obj.src = item.shared_link.download_url;
         }
@@ -243,14 +238,8 @@ exports.getAssetInfo = function (assetId, r) {
     connection.ready(function () {
         log.debug('getAssetInfo Ready');
         connection.getFileInfo(
-            assetId, // + '?fields=type,id,name,shared_link,tags',
+            assetId + '?fields=type,id,name,shared_link,tags,sha1',
             function (fileErr, fileResult) {
-                if (fileErr) {
-                    log.error(fileErr);
-                    r();
-                    return;
-                }
-
                 if (fileResult) {
                     log.info('We have a file');
                     getItemObject(fileResult, r);
@@ -293,11 +282,6 @@ exports.getAsset = function (assetId, r) {
             null,
             null,
             function (fileErr, fileResult) {
-                if (fileErr) {
-                    console.error(JSON.stringify(fileErr.context_info));
-                    r();
-                }
-
                 if (fileResult) {
                     log.debug('found it');
                     r(fileResult);
