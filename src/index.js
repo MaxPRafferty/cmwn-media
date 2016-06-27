@@ -80,7 +80,7 @@ app.get('/f/*', function (req, res) {
     });
 
     if ('' + parseInt(assetId, 10) === assetId) {
-        service.getAssetInfo(assetId, r, req);
+        service.getAssetInfo(assetId, r);
     } else {
         service.getAssetInfoByPath(assetId, r);
     }
