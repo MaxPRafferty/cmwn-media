@@ -33,26 +33,15 @@ function getItemObject(item, r) {
         }
     };
 
-    tags = item.tags || [];
-
     obj = {
-        'asset_type': 'item',
         type: item.type,
         'media_id': item.id,
         name: item.name,
         'can_overlap': false,
-        tags
     };
 
-    tags.forEach(tag => {
-        if (tag.indexOf('asset_type') === 0) {
-            obj.asset_type = tag.split('-')[1]; // eslint-disable-line camelcase
-        } else if (tag === 'can_overlap') {
-            obj.can_overlap = true; // eslint-disable-line camelcase
-        }
-    });
-
     if (item.type === 'file') {
+        obj.asset_type = 'item'; // eslint-disable-line camelcase
         obj.check = {
             type: 'sha1',
             value: item.sha1
@@ -67,6 +56,16 @@ function getItemObject(item, r) {
                 waitOn--;
             });
         }
+
+        tags = item.tags || [];
+
+        tags.forEach(tag => {
+            if (tag.indexOf('asset_type') === 0) {
+                obj.asset_type = tag.split('-')[1]; // eslint-disable-line camelcase
+            } else if (tag === 'can_overlap') {
+                obj.can_overlap = true; // eslint-disable-line camelcase
+            }
+        });
     }
 
     if (item.item_collection) {
@@ -86,10 +85,7 @@ function getChildItemObject(item) {
         return;
     }
 
-    tags = item.tags || [];
-
     obj = {
-        'asset_type': 'item',
         type: item.type,
         'media_id': item.id,
         name: item.name,
@@ -97,18 +93,21 @@ function getChildItemObject(item) {
         tags
     };
 
-    tags.forEach(tag => {
-        if (tag.indexOf('asset_type') === 0) {
-            obj.asset_type = tag.split('-')[1]; // eslint-disable-line camelcase
-        } else if (tag === 'can_overlap') {
-            obj.can_overlap = true; // eslint-disable-line camelcase
-        }
-    });
-
     if (item.type === 'file') {
+        obj.asset_type = 'item'; // eslint-disable-line camelcase
         if (item.shared_link) {
             obj.src = item.shared_link.download_url;
         }
+
+        tags = item.tags || [];
+
+        tags.forEach(tag => {
+            if (tag.indexOf('asset_type') === 0) {
+                obj.asset_type = tag.split('-')[1]; // eslint-disable-line camelcase
+            } else if (tag === 'can_overlap') {
+                obj.can_overlap = true; // eslint-disable-line camelcase
+            }
+        });
     }
 
     if (item.item_collection) {
@@ -172,12 +171,15 @@ exports.getAssetInfoByPath = function (query, r) {
 
     query = query || '';
 
+    var path = query.split('/');
+    var name = path[path.length - 1];
+
     log.debug('Finding Asset by Path: ' + query);
     //Navigate user to the auth URL
     connection.ready(function () {
         log.debug('ready getAssetInfoByPath');
         connection.search(
-            query,
+            name,
             null,
             function (err, result) {
                 log.debug('getAssetInfoByPath');
@@ -185,9 +187,6 @@ exports.getAssetInfoByPath = function (query, r) {
                     log.error(JSON.stringify(err.context_info));
                     r();
                 }
-
-                var path = query.split('/');
-                var name = path[path.length - 1];
 
                 if (result && result.entries) {
                     log.info('Data found for search');
