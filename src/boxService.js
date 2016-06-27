@@ -4,6 +4,8 @@ var log = new Log();
 var boxSDK = require('box-sdk');
 var config = require('./config.json');
 var env = config.env;
+var request = require('request');
+
 
 //Default host: localhost
 var box = boxSDK.Box({
@@ -15,28 +17,103 @@ var box = boxSDK.Box({
 
 var connection = box.getConnection(config.client_email);
 
-function getItemObject(item) {
+function getItemObject(item, r) {
     'use strict';
-    var obj;
+    var callResolve, obj, tags, waitOn = 0;
+
+    if (!item) {
+        return r();
+    }
+
+    callResolve = function () {
+        if (!waitOn) {
+            r(obj);
+        } else {
+            setTimeout(callResolve, 250);
+        }
+    };
+
+    tags = item.tags || [];
+
+    obj = {
+        'asset_type': 'item',
+        type: item.type,
+        'media_id': item.id,
+        name: item.name,
+        'can_overlap': false,
+        tags
+    };
+
+    tags.forEach(tag => {
+        if (tag.indexOf('asset_type') === 0) {
+            obj.asset_type = tag.split('-')[1]; // eslint-disable-line camelcase
+        } else if (tag === 'can_overlap') {
+            obj.can_overlap = true; // eslint-disable-line camelcase
+        }
+    });
+
+    if (item.type === 'file') {
+        obj.check = {
+            type: 'sha1',
+            value: item.sha1
+        };
+
+        if (item.shared_link) {
+            obj.src = item.shared_link.download_url;
+            waitOn++;
+
+            request(obj.src, {method: 'HEAD'}, function (err, res){
+                obj.mime_type = res.headers['content-type']; // eslint-disable-line camelcase
+                waitOn--;
+            });
+        }
+    }
+
+    if (item.item_collection) {
+        obj.items = item.item_collection.entries.map(function (i) {
+            return getChildItemObject(i);
+        });
+    }
+
+    callResolve();
+}
+
+function getChildItemObject(item) {
+    'use strict';
+    var obj, tags;
 
     if (!item) {
         return;
     }
 
+    tags = item.tags || [];
+
     obj = {
+        'asset_type': 'item',
         type: item.type,
-        id: item.id,
+        'media_id': item.id,
         name: item.name,
-        tags: item.tags
+        'can_overlap': false,
+        tags
     };
 
-    if (item.type === 'file' && item.shared_link) {
-        obj.url = item.shared_link.download_url;
+    tags.forEach(tag => {
+        if (tag.indexOf('asset_type') === 0) {
+            obj.asset_type = tag.split('-')[1]; // eslint-disable-line camelcase
+        } else if (tag === 'can_overlap') {
+            obj.can_overlap = true; // eslint-disable-line camelcase
+        }
+    });
+
+    if (item.type === 'file') {
+        if (item.shared_link) {
+            obj.src = item.shared_link.download_url;
+        }
     }
 
     if (item.item_collection) {
         obj.items = item.item_collection.entries.map(function (i) {
-            return getItemObject(i);
+            return getChildItemObject(i);
         });
     }
 
@@ -161,18 +238,11 @@ exports.getAssetInfo = function (assetId, r) {
     connection.ready(function () {
         log.debug('getAssetInfo Ready');
         connection.getFileInfo(
-            assetId + '?fields=type,id,name,shared_link,tags',
+            assetId + '?fields=type,id,name,shared_link,tags,sha1',
             function (fileErr, fileResult) {
-                if (fileErr) {
-                    log.error(fileErr);
-                    r();
-                    return;
-                }
-
                 if (fileResult) {
                     log.info('We have a file');
-                    let fileObj = getItemObject(fileResult);
-                    r(fileObj);
+                    getItemObject(fileResult, r);
                 } else {
                     log.info('We have a folder');
                     connection.getFolderInfo(
@@ -184,8 +254,7 @@ exports.getAssetInfo = function (assetId, r) {
                             }
 
                             if (folderResult) {
-                                let folderObj = getItemObject(folderResult);
-                                r(folderObj);
+                                getItemObject(folderResult, r);
                             }
                         }
                     );
@@ -213,11 +282,6 @@ exports.getAsset = function (assetId, r) {
             null,
             null,
             function (fileErr, fileResult) {
-                if (fileErr) {
-                    console.error(JSON.stringify(fileErr.context_info));
-                    r();
-                }
-
                 if (fileResult) {
                     log.debug('found it');
                     r(fileResult);
@@ -231,8 +295,7 @@ exports.getAsset = function (assetId, r) {
                             }
 
                             if (folderResult) {
-                                let folderObj = getItemObject(folderResult);
-                                r(folderObj);
+                                getItemObject(folderResult, r);
                             }
                         }
                     );

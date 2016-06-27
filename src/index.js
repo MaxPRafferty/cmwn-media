@@ -54,8 +54,8 @@ app.get('/f/*', function (req, res) {
     });
 
     p.then(data => {
-        if (data.url) {
-            request({url: data.url, encoding: null}, function (err, ires, body) {
+        if (data.src) {
+            request({url: data.src, encoding: null}, function (err, ires, body) {
                 if (!err && ires.statusCode === 200) {
                     res.send(body);
                 } else {
