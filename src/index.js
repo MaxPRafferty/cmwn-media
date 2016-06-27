@@ -2,7 +2,8 @@ var Log = require('log');
 var log = new Log('info');
 var express = require('express');
 var app = express();
-var request = require('request');
+// var request = require('request');
+var fs = require('fs');
 var service = require('./boxService.js');
 var storage = require('./storage.js');
 
@@ -53,15 +54,26 @@ app.get('/f/*', function (req, res) {
         };
     });
 
+    var r2;
+    var p2 = new Promise(resolve => {
+        r2 = data => {
+            resolve(data);
+        };
+    });
+
     p.then(data => {
-        if (data.src) {
-            request({url: data.src, encoding: null}, function (err, ires, body) {
-                if (!err && ires.statusCode === 200) {
-                    res.send(body);
-                } else {
-                    res.status(404).send('Not Found');
-                }
-            });
+        if (data) {
+            service.getAsset(data, r2);
+        } else {
+            res.status(404).send('Not Found');
+        }
+    });
+
+    p2.then(data => {
+        if (data) {
+            res.writeHead(200, {'Content-Type': data.mime_type});
+            var fileStream = fs.createReadStream('media/' + data.media_id);
+            fileStream.pipe(res);
         } else {
             res.status(404).send('Not Found');
         }

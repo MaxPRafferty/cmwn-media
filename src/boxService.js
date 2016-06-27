@@ -262,3 +262,33 @@ exports.getAssetInfo = function (assetId, r) {
         );
     });
 };
+
+/*
+ * @param assetId (string) the id of the file or folder to find
+ * @param r (function) the function the calls the resolve for the Promise
+ */
+exports.getAsset = function (data, r) {
+    'use strict';
+
+    var assetId = data.media_id || 0;
+
+    log.debug('Getting Asset: ' + assetId);
+
+    //Navigate user to the auth URL
+    connection.ready(function () {
+        connection.getFile(
+            assetId,
+            null,
+            'media/' + assetId,
+            function (fileErr) {
+                if (!fileErr) {
+                    log.debug('found it');
+                    r(data);
+                } else {
+                    log.debug('didnt find it');
+                    r();
+                }
+            }
+        );
+    });
+};

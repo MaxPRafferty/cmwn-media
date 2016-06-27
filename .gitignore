@@ -37,3 +37,5 @@ jspm_packages
 
 src/config.json
 src/aws.json
+
+media/*
