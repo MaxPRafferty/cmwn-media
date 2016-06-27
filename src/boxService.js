@@ -6,7 +6,6 @@ var config = require('./config.json');
 var env = config.env;
 var request = require('request');
 
-
 //Default host: localhost
 var box = boxSDK.Box({
     'client_id': config.client_id,
@@ -46,12 +45,12 @@ function getItemObject(item, r) {
             type: 'sha1',
             value: item.sha1
         };
+        obj.src = config.hostname + '/f/' + item.id;
 
         if (item.shared_link) {
-            obj.src = item.shared_link.download_url;
             waitOn++;
 
-            request(obj.src, {method: 'HEAD'}, function (err, res){
+            request(item.shared_link.download_url, {method: 'HEAD'}, function (err, res){
                 obj.mime_type = res.headers['content-type']; // eslint-disable-line camelcase
                 waitOn--;
             });
@@ -95,9 +94,11 @@ function getChildItemObject(item) {
 
     if (item.type === 'file') {
         obj.asset_type = 'item'; // eslint-disable-line camelcase
-        if (item.shared_link) {
-            obj.src = item.shared_link.download_url;
-        }
+        obj.check = {
+            type: 'sha1',
+            value: item.sha1
+        };
+        obj.src = config.hostname + '/f/' + item.id;
 
         tags = item.tags || [];
 
