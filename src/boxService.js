@@ -61,8 +61,8 @@ function getItemObject(item, r) {
         tags.forEach(tag => {
             if (tag.indexOf('asset_type') === 0) {
                 obj.asset_type = tag.split('-')[1]; // eslint-disable-line camelcase
-            } else if (tag === 'can_overlap') {
-                obj.can_overlap = true; // eslint-disable-line camelcase
+            } else {
+                obj[tag] = true; // eslint-disable-line camelcase
             }
         });
     } else {
@@ -107,8 +107,8 @@ function getChildItemObject(item) {
         tags.forEach(tag => {
             if (tag.indexOf('asset_type') === 0) {
                 obj.asset_type = tag.split('-')[1]; // eslint-disable-line camelcase
-            } else if (tag === 'can_overlap') {
-                obj.can_overlap = true; // eslint-disable-line camelcase
+            } else {
+                obj[tag] = true; // eslint-disable-line camelcase
             }
         });
     } else {
