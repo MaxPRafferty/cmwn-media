@@ -308,19 +308,7 @@ exports.getAsset = function (assetId, r) {
                             }
                         } else {
                             log.info('We have a folder');
-                            connection.getFolderInfo(
-                                data.media_id + '?fields=type,id,name,item_collection,tags',
-                                function (folderErr, folderResult) {
-                                    if (folderErr) {
-                                        console.error(JSON.stringify(folderErr.context_info));
-                                        r();
-                                    }
-
-                                    if (folderResult) {
-                                        getItemObject(folderResult, r);
-                                    }
-                                }
-                            );
+                            r({ status: 421 });
                         }
                     }
                 );

@@ -26,7 +26,7 @@ app.get(/^\/a\/{0,1}(.+)?/i, function (req, res) {
         if (data) {
             res.send(data);
         } else {
-            res.status(404).send('Not Found');
+            res.status(data.status || 404).send('Not Found');
         }
     });
 
@@ -54,7 +54,7 @@ app.get('/f/*', function (req, res) {
         if (data && data.url) {
             request(data.url).pipe(res);
         } else {
-            res.status(404).send('Not Found');
+            res.status(data.status || 404).send('Not Found');
         }
     });
 
