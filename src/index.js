@@ -2,8 +2,7 @@ var Log = require('log');
 var log = new Log('info');
 var express = require('express');
 var app = express();
-// var request = require('request');
-var fs = require('fs');
+var request = require('request');
 var service = require('./boxService.js');
 var storage = require('./storage.js');
 
@@ -31,16 +30,13 @@ app.get(/^\/a\/{0,1}(.+)?/i, function (req, res) {
         }
     });
 
-    if ('' + parseInt(assetId, 10) === assetId) {
-        service.getAssetInfo(assetId, r);
-    } else {
-        service.getAssetInfoByPath(assetId, r);
-    }
+    service.getAssetInfo(assetId, r);
 });
 
 // Serve the asset
 app.get('/f/*', function (req, res) {
     'use strict';
+
     log.debug(req.url);
     log.debug(req.params);
 
@@ -54,36 +50,15 @@ app.get('/f/*', function (req, res) {
         };
     });
 
-    var r2;
-    var p2 = new Promise(resolve => {
-        r2 = data => {
-            resolve(data);
-        };
-    });
-
     p.then(data => {
-        if (data) {
-            service.getAsset(data, r2);
+        if (data && data.url) {
+            request(data.url).pipe(res);
         } else {
             res.status(404).send('Not Found');
         }
     });
 
-    p2.then(data => {
-        if (data) {
-            res.writeHead(200, {'Content-Type': data.mime_type});
-            var fileStream = fs.createReadStream('media/' + data.media_id);
-            fileStream.pipe(res);
-        } else {
-            res.status(404).send('Not Found');
-        }
-    });
-
-    if ('' + parseInt(assetId, 10) === assetId) {
-        service.getAssetInfo(assetId, r);
-    } else {
-        service.getAssetInfoByPath(assetId, r);
-    }
+    service.getAsset(assetId, r);
 });
 
 app.listen(3000, function () {

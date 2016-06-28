@@ -164,10 +164,22 @@ exports.init = function (storage) {
 };
 
 /*
+ * @param assetId (string) the id of the file or folder to find
+ * @param r (function) the function the calls the resolve for the Promise
+ */
+exports.getAssetInfo = function (assetId, r) {
+    if ('' + parseInt(assetId, 10) === assetId) {
+        getAssetInfoById(assetId, r);
+    } else {
+        getAssetInfoByPath(assetId, r);
+    }
+};
+
+/*
  * @param query (string) the query string to search
  * @param r (function) the function the calls the resolve for the Promise
  */
-exports.getAssetInfoByPath = function (query, r) {
+var getAssetInfoByPath = function (query, r) {
     'use strict';
 
     query = query || '';
@@ -227,7 +239,7 @@ exports.getAssetInfoByPath = function (query, r) {
  * @param assetId (string) the id of the file or folder to find
  * @param r (function) the function the calls the resolve for the Promise
  */
-exports.getAssetInfo = function (assetId, r) {
+var getAssetInfoById = function (assetId, r) {
     'use strict';
 
     assetId = assetId || 0;
@@ -268,28 +280,59 @@ exports.getAssetInfo = function (assetId, r) {
  * @param assetId (string) the id of the file or folder to find
  * @param r (function) the function the calls the resolve for the Promise
  */
-exports.getAsset = function (data, r) {
+exports.getAsset = function (assetId, r) {
     'use strict';
 
-    var assetId = data.media_id || 0;
-
-    log.debug('Getting Asset: ' + assetId);
-
-    //Navigate user to the auth URL
-    connection.ready(function () {
-        connection.getFile(
-            assetId,
-            null,
-            'media/' + assetId,
-            function (fileErr) {
-                if (!fileErr) {
-                    log.debug('found it');
-                    r(data);
-                } else {
-                    log.debug('didnt find it');
-                    r();
-                }
-            }
-        );
+    var r2;
+    var p2 = new Promise(resolve => {
+        r2 = data => {
+            resolve(data);
+        };
     });
+
+    p2.then(data => {
+        if (data) {
+            connection.ready(function () {
+                log.debug('getAsset Ready');
+                connection.getFileInfo(
+                    data.media_id + '?fields=shared_link',
+                    function (fileErr, fileResult) {
+                        if (fileResult) {
+                            log.info('We have a file');
+                            if (fileResult.shared_link) {
+                                r({
+                                    url: fileResult.shared_link.download_url
+                                });
+                            } else {
+                                r();
+                            }
+                        } else {
+                            log.info('We have a folder');
+                            connection.getFolderInfo(
+                                data.media_id + '?fields=type,id,name,item_collection,tags',
+                                function (folderErr, folderResult) {
+                                    if (folderErr) {
+                                        console.error(JSON.stringify(folderErr.context_info));
+                                        r();
+                                    }
+
+                                    if (folderResult) {
+                                        getItemObject(folderResult, r);
+                                    }
+                                }
+                            );
+                        }
+                    }
+                );
+            });
+        } else {
+            r();
+        }
+    });
+
+    if ('' + parseInt(assetId, 10) === assetId) {
+        r2({ 'media_id': assetId });
+    } else {
+        getAssetInfoByPath(assetId, r2);
+    }
 };
