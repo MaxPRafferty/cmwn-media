@@ -65,6 +65,8 @@ function getItemObject(item, r) {
                 obj.can_overlap = true; // eslint-disable-line camelcase
             }
         });
+    } else {
+        obj.asset_type = 'folder'; // eslint-disable-line camelcase
     }
 
     if (item.item_collection) {
@@ -109,6 +111,8 @@ function getChildItemObject(item) {
                 obj.can_overlap = true; // eslint-disable-line camelcase
             }
         });
+    } else {
+        obj.asset_type = 'folder'; // eslint-disable-line camelcase
     }
 
     if (item.item_collection) {
