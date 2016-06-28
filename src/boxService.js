@@ -6,7 +6,6 @@ var config = require('./config.json');
 var env = config.env;
 var request = require('request');
 
-
 //Default host: localhost
 var box = boxSDK.Box({
     'client_id': config.client_id,
@@ -33,40 +32,41 @@ function getItemObject(item, r) {
         }
     };
 
-    tags = item.tags || [];
-
     obj = {
-        'asset_type': 'item',
         type: item.type,
         'media_id': item.id,
         name: item.name,
         'can_overlap': false,
-        tags
     };
 
-    tags.forEach(tag => {
-        if (tag.indexOf('asset_type') === 0) {
-            obj.asset_type = tag.split('-')[1]; // eslint-disable-line camelcase
-        } else if (tag === 'can_overlap') {
-            obj.can_overlap = true; // eslint-disable-line camelcase
-        }
-    });
-
     if (item.type === 'file') {
+        obj.asset_type = 'item'; // eslint-disable-line camelcase
         obj.check = {
             type: 'sha1',
             value: item.sha1
         };
+        obj.src = config.hostname + '/f/' + item.id;
 
         if (item.shared_link) {
-            obj.src = item.shared_link.download_url;
             waitOn++;
 
-            request(obj.src, {method: 'HEAD'}, function (err, res){
+            request(item.shared_link.download_url, {method: 'HEAD'}, function (err, res){
                 obj.mime_type = res.headers['content-type']; // eslint-disable-line camelcase
                 waitOn--;
             });
         }
+
+        tags = item.tags || [];
+
+        tags.forEach(tag => {
+            if (tag.indexOf('asset_type') === 0) {
+                obj.asset_type = tag.split('-')[1]; // eslint-disable-line camelcase
+            } else {
+                obj[tag] = true; // eslint-disable-line camelcase
+            }
+        });
+    } else {
+        obj.asset_type = 'folder'; // eslint-disable-line camelcase
     }
 
     if (item.item_collection) {
@@ -86,10 +86,7 @@ function getChildItemObject(item) {
         return;
     }
 
-    tags = item.tags || [];
-
     obj = {
-        'asset_type': 'item',
         type: item.type,
         'media_id': item.id,
         name: item.name,
@@ -97,18 +94,25 @@ function getChildItemObject(item) {
         tags
     };
 
-    tags.forEach(tag => {
-        if (tag.indexOf('asset_type') === 0) {
-            obj.asset_type = tag.split('-')[1]; // eslint-disable-line camelcase
-        } else if (tag === 'can_overlap') {
-            obj.can_overlap = true; // eslint-disable-line camelcase
-        }
-    });
-
     if (item.type === 'file') {
-        if (item.shared_link) {
-            obj.src = item.shared_link.download_url;
-        }
+        obj.asset_type = 'item'; // eslint-disable-line camelcase
+        obj.check = {
+            type: 'sha1',
+            value: item.sha1
+        };
+        obj.src = config.hostname + '/f/' + item.id;
+
+        tags = item.tags || [];
+
+        tags.forEach(tag => {
+            if (tag.indexOf('asset_type') === 0) {
+                obj.asset_type = tag.split('-')[1]; // eslint-disable-line camelcase
+            } else {
+                obj[tag] = true; // eslint-disable-line camelcase
+            }
+        });
+    } else {
+        obj.asset_type = 'folder'; // eslint-disable-line camelcase
     }
 
     if (item.item_collection) {
@@ -164,20 +168,35 @@ exports.init = function (storage) {
 };
 
 /*
+ * @param assetId (string) the id of the file or folder to find
+ * @param r (function) the function the calls the resolve for the Promise
+ */
+exports.getAssetInfo = function (assetId, r) {
+    if ('' + parseInt(assetId, 10) === assetId) {
+        getAssetInfoById(assetId, r);
+    } else {
+        getAssetInfoByPath(assetId, r);
+    }
+};
+
+/*
  * @param query (string) the query string to search
  * @param r (function) the function the calls the resolve for the Promise
  */
-exports.getAssetInfoByPath = function (query, r) {
+var getAssetInfoByPath = function (query, r) {
     'use strict';
 
     query = query || '';
+
+    var path = query.split('/');
+    var name = path[path.length - 1];
 
     log.debug('Finding Asset by Path: ' + query);
     //Navigate user to the auth URL
     connection.ready(function () {
         log.debug('ready getAssetInfoByPath');
         connection.search(
-            query,
+            name,
             null,
             function (err, result) {
                 log.debug('getAssetInfoByPath');
@@ -185,9 +204,6 @@ exports.getAssetInfoByPath = function (query, r) {
                     log.error(JSON.stringify(err.context_info));
                     r();
                 }
-
-                var path = query.split('/');
-                var name = path[path.length - 1];
 
                 if (result && result.entries) {
                     log.info('Data found for search');
@@ -227,7 +243,7 @@ exports.getAssetInfoByPath = function (query, r) {
  * @param assetId (string) the id of the file or folder to find
  * @param r (function) the function the calls the resolve for the Promise
  */
-exports.getAssetInfo = function (assetId, r) {
+var getAssetInfoById = function (assetId, r) {
     'use strict';
 
     assetId = assetId || 0;
@@ -271,36 +287,44 @@ exports.getAssetInfo = function (assetId, r) {
 exports.getAsset = function (assetId, r) {
     'use strict';
 
-    assetId = assetId || 0;
-
-    log.debug('Getting Asset: ' + assetId);
-
-    //Navigate user to the auth URL
-    connection.ready(function () {
-        connection.getFile(
-            assetId,
-            null,
-            null,
-            function (fileErr, fileResult) {
-                if (fileResult) {
-                    log.debug('found it');
-                    r(fileResult);
-                } else {
-                    log.debug('didnt find it');
-                    connection.getFolderInfo(
-                        assetId,
-                        function (folderErr, folderResult) {
-                            if (folderErr) {
-                                console.error(JSON.stringify(folderErr.context_info));
-                            }
-
-                            if (folderResult) {
-                                getItemObject(folderResult, r);
-                            }
-                        }
-                    );
-                }
-            }
-        );
+    var r2;
+    var p2 = new Promise(resolve => {
+        r2 = data => {
+            resolve(data);
+        };
     });
+
+    p2.then(data => {
+        if (data) {
+            connection.ready(function () {
+                log.debug('getAsset Ready');
+                connection.getFileInfo(
+                    data.media_id + '?fields=shared_link',
+                    function (fileErr, fileResult) {
+                        if (fileResult) {
+                            log.info('We have a file');
+                            if (fileResult.shared_link) {
+                                r({
+                                    url: fileResult.shared_link.download_url
+                                });
+                            } else {
+                                r();
+                            }
+                        } else {
+                            log.info('We have a folder');
+                            r({ status: 421 });
+                        }
+                    }
+                );
+            });
+        } else {
+            r();
+        }
+    });
+
+    if ('' + parseInt(assetId, 10) === assetId) {
+        r2({ 'media_id': assetId });
+    } else {
+        getAssetInfoByPath(assetId, r2);
+    }
 };

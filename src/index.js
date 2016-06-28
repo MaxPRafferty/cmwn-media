@@ -26,20 +26,17 @@ app.get(/^\/a\/{0,1}(.+)?/i, function (req, res) {
         if (data) {
             res.send(data);
         } else {
-            res.status(404).send('Not Found');
+            res.status(data.status || 404).send('Not Found');
         }
     });
 
-    if ('' + parseInt(assetId, 10) === assetId) {
-        service.getAssetInfo(assetId, r);
-    } else {
-        service.getAssetInfoByPath(assetId, r);
-    }
+    service.getAssetInfo(assetId, r);
 });
 
 // Serve the asset
 app.get('/f/*', function (req, res) {
     'use strict';
+
     log.debug(req.url);
     log.debug(req.params);
 
@@ -54,24 +51,14 @@ app.get('/f/*', function (req, res) {
     });
 
     p.then(data => {
-        if (data.src) {
-            request({url: data.src, encoding: null}, function (err, ires, body) {
-                if (!err && ires.statusCode === 200) {
-                    res.send(body);
-                } else {
-                    res.status(404).send('Not Found');
-                }
-            });
+        if (data && data.url) {
+            request(data.url).pipe(res);
         } else {
-            res.status(404).send('Not Found');
+            res.status(data.status || 404).send('Not Found');
         }
     });
 
-    if ('' + parseInt(assetId, 10) === assetId) {
-        service.getAssetInfo(assetId, r);
-    } else {
-        service.getAssetInfoByPath(assetId, r);
-    }
+    service.getAsset(assetId, r);
 });
 
 app.listen(3000, function () {

@@ -4,4 +4,5 @@
     "client_email": "<box client email>",
     "logLevel": "debug",
     "env": "local"
+    "hostname": "https://media.server.com"
 }
