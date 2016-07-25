@@ -1,10 +1,13 @@
 var exports = module.exports = {};
+var _ = require('lodash');
 var Log = require('log');
 var log = new Log();
 var boxSDK = require('box-sdk');
 var config = require('./config.json');
 var env = config.env;
 var request = require('request');
+
+const THUMB_PREFIX = 'thumb_';
 
 //Default host: localhost
 var box = boxSDK.Box({
@@ -70,9 +73,24 @@ function getItemObject(item, r) {
     }
 
     if (item.item_collection) {
-        obj.items = item.item_collection.entries.map(function (i) {
-            return getChildItemObject(i);
-        });
+        obj.items = _.values(_.reduce(item.item_collection.entries, function (a, i) {
+            var fullItem = getChildItemObject(i);
+            if (i.name.indexOf(THUMB_PREFIX) === 0) {
+                a[i.name.replace(THUMB_PREFIX, '')] = _.defaults(
+                    {},
+                    {thumb: fullItem.src},
+                    a[i.name.replace(THUMB_PREFIX, '')]
+                );
+            } else {
+                a[i.name.replace(THUMB_PREFIX, '')] = _.defaults(
+                    {},
+                    a[i.name.replace(THUMB_PREFIX, '')],
+                    fullItem,
+                    {thumb: fullItem.src}
+                );
+            }
+            return a;
+        }, {}));
     }
 
     callResolve();
