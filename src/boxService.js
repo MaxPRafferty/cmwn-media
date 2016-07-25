@@ -64,6 +64,8 @@ function getItemObject(item, r) {
         tags.forEach(tag => {
             if (tag.indexOf('asset_type') === 0) {
                 obj.asset_type = tag.split('-')[1]; // eslint-disable-line camelcase
+            } else if (~tag.indexOf(':')) {
+                obj[tag.split(':')[0]] = tag.split(':')[1];
             } else {
                 obj[tag] = true; // eslint-disable-line camelcase
             }
@@ -125,6 +127,8 @@ function getChildItemObject(item) {
         tags.forEach(tag => {
             if (tag.indexOf('asset_type') === 0) {
                 obj.asset_type = tag.split('-')[1]; // eslint-disable-line camelcase
+            } else if (~tag.indexOf(':')) {
+                obj[tag.split(':')[0]] = tag.split(':')[1];
             } else {
                 obj[tag] = true; // eslint-disable-line camelcase
             }
