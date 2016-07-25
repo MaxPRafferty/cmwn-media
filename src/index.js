@@ -1,10 +1,12 @@
 var Log = require('log');
 var log = new Log('info');
+var rollbar = require('rollbar');
 var express = require('express');
 var app = express();
 var request = require('request');
 var service = require('./boxService.js');
 var storage = require('./storage.js');
+var rollbarKeys = require('./rollbar.json');
 
 // query the asset
 app.get(/^\/a\/{0,1}(.+)?/i, function (req, res) {
@@ -60,6 +62,11 @@ app.get('/f/*', function (req, res) {
 
     service.getAsset(assetId, r);
 });
+
+rollbar.init({environment: 'Media'});
+rollbar.handleUncaughtExceptions(rollbarKeys.token);
+rollbar.handleUnhandledRejections(rollbarKeys.token);
+app.use(rollbar.errorHandler(rollbarKeys.token));
 
 app.listen(3000, function () {
     service.init(storage);
