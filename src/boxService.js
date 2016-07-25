@@ -73,20 +73,20 @@ function getItemObject(item, r) {
     }
 
     if (item.item_collection) {
-        obj.items = _.values(_.reduce(item.item_collection.entries, function (a, i) {
-            var fullItem = getChildItemObject(i);
-            if (i.name.indexOf(THUMB_PREFIX) === 0) {
-                a[i.name.replace(THUMB_PREFIX, '')] = _.defaults(
+        obj.items = _.values(_.reduce(item.item_collection.entries, function (a, v, k) {
+            var fullItem = getChildItemObject(v);
+            if (v.name.indexOf(THUMB_PREFIX) === 0) {
+                a[v.name.replace(THUMB_PREFIX, '')] = _.defaults(
                     {},
                     {thumb: fullItem.src},
-                    a[i.name.replace(THUMB_PREFIX, '')]
+                    a[v.name.replace(THUMB_PREFIX, '')]
                 );
             } else {
-                a[i.name.replace(THUMB_PREFIX, '')] = _.defaults(
+                a[v.name.replace(THUMB_PREFIX, '')] = _.defaults(
                     {},
-                    a[i.name.replace(THUMB_PREFIX, '')],
+                    a[v.name.replace(THUMB_PREFIX, '')],
                     fullItem,
-                    {thumb: fullItem.src}
+                    {thumb: fullItem.src, order: k}
                 );
             }
             return a;
