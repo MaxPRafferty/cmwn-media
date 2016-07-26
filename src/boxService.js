@@ -1,10 +1,13 @@
 var exports = module.exports = {};
+var _ = require('lodash');
 var Log = require('log');
 var log = new Log();
 var boxSDK = require('box-sdk');
 var config = require('./config.json');
 var env = config.env;
 var request = require('request');
+
+const THUMB_PREFIX = 'thumb_';
 
 //Default host: localhost
 var box = boxSDK.Box({
@@ -61,6 +64,8 @@ function getItemObject(item, r) {
         tags.forEach(tag => {
             if (tag.indexOf('asset_type') === 0) {
                 obj.asset_type = tag.split('-')[1]; // eslint-disable-line camelcase
+            } else if (~tag.indexOf(':')) {
+                obj[tag.split(':')[0]] = tag.split(':')[1];
             } else {
                 obj[tag] = true; // eslint-disable-line camelcase
             }
@@ -70,9 +75,24 @@ function getItemObject(item, r) {
     }
 
     if (item.item_collection) {
-        obj.items = item.item_collection.entries.map(function (i) {
-            return getChildItemObject(i);
-        });
+        obj.items = _.values(_.reduce(item.item_collection.entries, function (a, v, k) {
+            var fullItem = getChildItemObject(v);
+            if (v.name.indexOf(THUMB_PREFIX) === 0) {
+                a[v.name.replace(THUMB_PREFIX, '')] = _.defaults(
+                    {},
+                    {thumb: fullItem.src},
+                    a[v.name.replace(THUMB_PREFIX, '')]
+                );
+            } else {
+                a[v.name.replace(THUMB_PREFIX, '')] = _.defaults(
+                    {},
+                    a[v.name.replace(THUMB_PREFIX, '')],
+                    fullItem,
+                    {thumb: fullItem.src, order: k}
+                );
+            }
+            return a;
+        }, {}));
     }
 
     callResolve();
@@ -107,6 +127,8 @@ function getChildItemObject(item) {
         tags.forEach(tag => {
             if (tag.indexOf('asset_type') === 0) {
                 obj.asset_type = tag.split('-')[1]; // eslint-disable-line camelcase
+            } else if (~tag.indexOf(':')) {
+                obj[tag.split(':')[0]] = tag.split(':')[1];
             } else {
                 obj[tag] = true; // eslint-disable-line camelcase
             }

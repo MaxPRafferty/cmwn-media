@@ -37,5 +37,8 @@ jspm_packages
 
 src/config.json
 src/aws.json
+src/rollbar.json
 
 media/*
+
+**/*.swp
