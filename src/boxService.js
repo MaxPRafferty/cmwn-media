@@ -96,7 +96,7 @@ function getItemObject(item, r) {
             }
             return a;
         }, {})), function (i) {
-            return i.src != null;
+            return (i.type === 'file' && i.src != null) || i.type != null;
         });
     }
 
