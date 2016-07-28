@@ -75,24 +75,29 @@ function getItemObject(item, r) {
     }
 
     if (item.item_collection) {
-        obj.items = _.values(_.reduce(item.item_collection.entries, function (a, v, k) {
+        obj.items = _.filter(_.values(_.reduce(item.item_collection.entries, function (a, v, k) {
             var fullItem = getChildItemObject(v);
+            //NOTE, MPR: We have made our filenames non case sensitive. Use caution.
+            var itemName = v.name.replace(THUMB_PREFIX, '').toLowerCase();
             if (v.name.indexOf(THUMB_PREFIX) === 0) {
-                a[v.name.replace(THUMB_PREFIX, '')] = _.defaults(
+                a[itemName] = _.defaults(
                     {},
                     {thumb: fullItem.src},
-                    a[v.name.replace(THUMB_PREFIX, '')]
+                    a[itemName]
+                    //fullItem
                 );
             } else {
-                a[v.name.replace(THUMB_PREFIX, '')] = _.defaults(
+                a[itemName] = _.defaults(
                     {},
-                    a[v.name.replace(THUMB_PREFIX, '')],
                     fullItem,
+                    a[itemName],
                     {thumb: fullItem.src, order: k}
                 );
             }
             return a;
-        }, {}));
+        }, {})), function (i) {
+            return i.src != null;
+        });
     }
 
     callResolve();
