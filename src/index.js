@@ -12,6 +12,8 @@ var AWS = require('aws-sdk');
 AWS.config.loadFromPath('./src/aws.json');
 var docClient = new AWS.DynamoDB.DocumentClient();
 
+const CACHE_EXPIRY = 1; //hours
+
 // query the asset
 app.get(/^\/a\/{0,1}(.+)?/i, function (req, res) {
     'use strict';
@@ -39,14 +41,19 @@ app.get(/^\/a\/{0,1}(.+)?/i, function (req, res) {
     });
 
     p.then(data => {
-        console.log('sneding data: ' + JSON.stringify(data));
         if (data) {
             res.send(data);
-            docClient.put({TableName: 'media-cache', Item: {path: req.url, data: data}}, function (err) {
-                if (err) {
-                    console.log('cache store failed: ' + err);
-                }
-            });
+            if (!data.cached) {
+                docClient.put({TableName: 'media-cache', Item: {
+                    path: req.url,
+                    expires: Math.floor((new Date).getTime() / 1000) + CACHE_EXPIRY * 360000,
+                    data: data
+                }}, function (err) {
+                    if (err) {
+                        console.error('cache store failed: ' + err);
+                    }
+                });
+            }
         } else {
             res.status(data.status || 404).send('Not Found');
         }
@@ -54,12 +61,14 @@ app.get(/^\/a\/{0,1}(.+)?/i, function (req, res) {
 
     docClient.get(params, function (err, data) {
         if (err || !Object.keys(data).length) {
-            console.log('cache miss for ' + req.url);
             service.getAssetInfo(assetId, r);
         } else {
-            console.log('cache hit for ' + req.url);
-            console.log('the data: ' + JSON.stringify(data.Item.data));
-            r(data.Item.data);
+            if (data.Item.expires - Math.floor((new Date).getTime() / 1000) < 0 ) {
+                service.getAssetInfo(assetId, r);
+            } else {
+                data.Item.data.cached = true;
+                r(data.Item.data);
+            }
         }
     });
 
