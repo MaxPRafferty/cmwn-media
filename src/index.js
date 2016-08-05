@@ -7,18 +7,34 @@ var request = require('request');
 var service = require('./boxService.js');
 var storage = require('./storage.js');
 var rollbarKeys = require('./rollbar.json');
+var AWS = require('aws-sdk');
+
+AWS.config.loadFromPath('./src/aws.json');
+var docClient = new AWS.DynamoDB.DocumentClient();
+
+const CACHE_EXPIRY = 1; //hours
 
 // query the asset
 app.get(/^\/a\/{0,1}(.+)?/i, function (req, res) {
     'use strict';
+    var assetId;
+    var r;
+    var p;
+
+    var params = {
+        TableName: 'media-cache',
+        Key: {
+            'path': req.url
+        }
+    };
+
     log.debug(req.url);
     log.debug(req.params);
 
-    var assetId = req.params[0] || '0';
+    assetId = req.params[0] || '0';
     log.debug('Asset Id: ' + assetId);
 
-    var r;
-    var p = new Promise(resolve => {
+    p = new Promise(resolve => {
         r = data => {
             resolve(data);
         };
@@ -27,12 +43,35 @@ app.get(/^\/a\/{0,1}(.+)?/i, function (req, res) {
     p.then(data => {
         if (data) {
             res.send(data);
+            if (!data.cached) {
+                docClient.put({TableName: 'media-cache', Item: {
+                    path: req.url,
+                    expires: Math.floor((new Date).getTime() / 1000) + CACHE_EXPIRY * 360000,
+                    data: data
+                }}, function (err) {
+                    if (err) {
+                        console.error('cache store failed: ' + err);
+                    }
+                });
+            }
         } else {
             res.status(data.status || 404).send('Not Found');
         }
     });
 
-    service.getAssetInfo(assetId, r);
+    docClient.get(params, function (err, data) {
+        if (err || !Object.keys(data).length) {
+            service.getAssetInfo(assetId, r);
+        } else {
+            if (data.Item.expires - Math.floor((new Date).getTime() / 1000) < 0 ) {
+                service.getAssetInfo(assetId, r);
+            } else {
+                data.Item.data.cached = true;
+                r(data.Item.data);
+            }
+        }
+    });
+
 });
 
 // Serve the asset
