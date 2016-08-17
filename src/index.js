@@ -4,6 +4,7 @@ var rollbar = require('rollbar');
 var express = require('express');
 var app = express();
 var request = require('request');
+var crypto = require('crypto');
 var service = require('./boxService.js');
 var storage = require('./storage.js');
 var rollbarKeys = require('./rollbar.json');
@@ -93,7 +94,13 @@ app.get('/f/*', function (req, res) {
 
     p.then(data => {
         if (data && data.url) {
-            request(data.url).pipe(res);
+            request
+                .get(data.url)
+                .on('response', function (response) {
+                    response.headers['cache-control'] = 'public, max-age=604800';
+                    response.headers.etag = crypto.createHash('md5').update(data.url).digest('hex');
+                    return response;
+                }).pipe(res);
         } else {
             res.status(data.status || 404).send('Not Found');
         }
