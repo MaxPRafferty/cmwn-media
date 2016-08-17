@@ -109,6 +109,13 @@ app.get('/f/*', function (req, res) {
     service.getAsset(assetId, r);
 });
 
+// ping the service (used for health checks
+app.get('/p', function (req, res) {
+    'use strict';
+
+    res.status(200).send('LGTM');
+});
+
 rollbar.init({environment: 'Media'});
 rollbar.handleUncaughtExceptions(rollbarKeys.token);
 rollbar.handleUnhandledRejections(rollbarKeys.token);
