@@ -350,8 +350,7 @@ exports.getAsset = function (assetId, r) {
                 );
             });
         } else {
-            log.info('HERE 3');
-            r({status: 602});
+            r({status: 404});
         }
     }).catch(err => {
         log.info(err);
