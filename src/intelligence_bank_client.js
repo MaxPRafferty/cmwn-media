@@ -54,18 +54,23 @@ class IntelligenceBank {
 
         options = _.defaults(options, defaultOptions);
 
-        this.transformAsset = this.transformAsset.bind(
-                null,
-                options.instanceUrl + IB_PATHS.RESOURCE +
-                    '?p10=' + this.apikey +
-                    '&p20=' + this.useruuid +
-                    '&fileuuid='
-        );
+        if (options.apikey != null) {
+            this.apikey = options.apikey;
+            this.useruuid = options.useruuid;
+            return Promise.resolve(options);
+        }
 
         return this.makeHTTPCall(requestParams).then(function (data) {
             options.onConnect(data);
             this.apikey = data.apikey;
             this.useruuid = data.useruuid;
+            this.transformAsset = this.transformAsset.bind(
+                    null,
+                    options.instanceUrl + IB_PATHS.RESOURCE +
+                        '?p10=' + this.apikey +
+                        '&p20=' + this.useruuid +
+                        '&fileuuid='
+            );
             return Promise.resolve(data);
         });
     }
