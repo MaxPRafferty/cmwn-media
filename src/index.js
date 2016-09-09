@@ -5,8 +5,9 @@ var express = require('express');
 var app = express();
 var request = require('request');
 var crypto = require('crypto');
-var service = require('./boxService.js');
-var storage = require('./storage.js');
+//var service = require('./boxService.js');
+//var storage = require('./box_storage.js');
+var service = require('./intelligence_bank_service.js');
 var rollbarKeys = require('./rollbar.json');
 var AWS = require('aws-sdk');
 
@@ -60,18 +61,18 @@ app.get(/^\/a\/{0,1}(.+)?/i, function (req, res) {
         }
     });
 
-    docClient.get(params, function (err, data) {
-        if (err || !Object.keys(data).length) {
+//    docClient.get(params, function (err, data) {
+//        if (err || !Object.keys(data).length) {
             service.getAssetInfo(assetId, r);
-        } else {
-            if (data.Item.expires - Math.floor((new Date).getTime() / 1000) < 0 ) {
-                service.getAssetInfo(assetId, r);
-            } else {
-                data.Item.data.cached = true;
-                r(data.Item.data);
-            }
-        }
-    });
+//        } else {
+//            if (data.Item.expires - Math.floor((new Date).getTime() / 1000) < 0 ) {
+//                service.getAssetInfo(assetId, r);
+//            } else {
+//                data.Item.data.cached = true;
+//                r(data.Item.data);
+//            }
+//        }
+//    });
 
 });
 
@@ -122,6 +123,7 @@ rollbar.handleUnhandledRejections(rollbarKeys.token);
 app.use(rollbar.errorHandler(rollbarKeys.token));
 
 app.listen(3000, function () {
-    service.init(storage);
+    //service.init(storage);
+    service.init();
     log.debug('Example app listening on port 3000!');
 });

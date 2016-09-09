@@ -1,43 +1,68 @@
-var _ = 'lodash';
+'use strict';
+var _ = require('lodash');
 var httprequest = require('request');
+httprequest.debug = true;
+require('request-debug')(httprequest);
 
 const IB_PATHS = {
     LOGIN: '/webapp/1.0/login',
     RESOURCE: '/webapp/1.0/resources'
 };
 
-const IB_SILLY_ERROR = 'A server error ocurred';
-
+const IB_ERRORS = {
+    SILLY: 'A server error ocurred',
+    LOGIN: 'Invalid user or password'
+};
 
 class IntelligenceBank {
     constructor(options) {
+        var self = this;
         this.apikey = '';
         this.useruuid = '';
+        this.baseUrl = options.baseUrl;
         this.request = httprequest.defaults({
-            baseUrl: options.baseUrl,
-            method: 'GET',
-            json: true
+            json: true,
+            headers: {
+                Cookie: '_aid=18ec5caaa73230298b5bc42aab395d50_cgfrj9dg4n3nbehbeal4r6sqo2;'
+            }
         });
         this.log = options.log || console;
         this.transformFolder = options.transformFolder;
         this.transformAsset = options.transformAsset;
+
+        _.each(this, function (property, name) {
+            if (_.isFunction(property)) {
+                self[name] = property.bind(self);
+            }
+        });
     }
     makeHTTPCall(options) {
+        var self = this;
+        console.log('starting http request');
         return new Promise(function (resolve, reject) {
-            this.request(options, function (err, response, data) {
-                if (err) {
-                    this.log.error(err);
-                    reject(err);
-                } else if (data.message === IB_SILLY_ERROR) {
-                    reject({message: 'server refused request, reason not provided. 404 assumed.', status: 404});
-                } else {
-                    this.log.log(data);
-                    resolve(data);
-                }
-            });
+            console.log('making http request to ' + options.uri);
+            try {
+                self.request(options, function (err, response, data) {
+                    if (err) {
+                        console.error(err);
+                        reject(err);
+                    } else if (data.message === IB_ERRORS.SILLY) {
+                        reject({message: 'server refused request, reason not provided. 404 assumed.', status: 404});
+                    } else if (data.message === IB_ERRORS.LOGIN) {
+                        reject({status: 401, message: 'Invalid Login. User not authorized'});
+                    } else {
+                        console.log(data);
+                        resolve(data);
+                    }
+                });
+            } catch(err) {
+                console.log(err);
+                reject(err);
+            }
         });
     }
     connect(options) {
+        var self = this;
         var defaultOptions = {
             onConnect: _.identity
         };
@@ -46,35 +71,45 @@ class IntelligenceBank {
             p80: options.password,
             p90: options.instanceUrl
         };
+        console.log('logging in as ' + JSON.stringify(options.username));
         var requestParams = {
             method: 'POST',
-            uri: IB_PATHS.LOGIN,
+            uri: self.baseUrl + IB_PATHS.LOGIN,
             form: formData
         };
 
         options = _.defaults(options, defaultOptions);
 
         if (options.apikey != null) {
-            this.apikey = options.apikey;
-            this.useruuid = options.useruuid;
+            self.apikey = options.apikey;
+            self.useruuid = options.useruuid;
+            console.log('connection success (cache). setting keys');
             return Promise.resolve(options);
         }
 
-        return this.makeHTTPCall(requestParams).then(function (data) {
-            options.onConnect(data);
-            this.apikey = data.apikey;
-            this.useruuid = data.useruuid;
-            this.transformAsset = this.transformAsset.bind(
-                    null,
-                    options.instanceUrl + IB_PATHS.RESOURCE +
-                        '?p10=' + this.apikey +
-                        '&p20=' + this.useruuid +
-                        '&fileuuid='
-            );
-            return Promise.resolve(data);
-        });
+        console.log('starting connect');
+        return self.makeHTTPCall(requestParams)
+            .then(function (data) {
+                options.onConnect(data);
+                self.apikey = data.apikey;
+                self.useruuid = data.useruuid;
+                console.log('setting key: ' + data.apikey);
+                self.transformAsset = self.transformAsset.bind(
+                        null,
+                        options.instanceUrl + IB_PATHS.RESOURCE +
+                            '?p10=' + self.apikey +
+                            '&p20=' + self.useruuid +
+                            '&fileuuid='
+                );
+                console.log('connection success. setting keys');
+                return Promise.resolve(data);
+            })
+            .catch(function (err) {
+                console.log(err);
+            });
     }
     getFolderInfo(options) {
+        var self = this;
         var resolve;
         var reject;
         var err;
@@ -82,32 +117,53 @@ class IntelligenceBank {
             resolve = resolve_;
             reject = reject_;
         });
+        console.log('getting folder with apikey: ' + self.apikey);
         //very simple. If an id is provided, retrieve it directly. If a path is provided, walk the tree until it is found
-        if (options.id) {
-            this.makeHTTPCall({qs: {
-                p10: this.apikey,
-                p20: this.useruuid,
-                folderuuid: options.id
-            }})
-                .then(function (data) {
-                    resolve(this.transformFolder(data));
+        try {
+            if (options.id) {
+                console.log('getting folder by id');
+                self.makeHTTPCall({
+                    uri: self.baseUrl + IB_PATHS.RESOURCE,
+                    qs: {
+                        p10: self.apikey,
+                        p20: self.useruuid,
+                        folderuuid: options.id
+                    }
                 })
-                .catch(function (err_) {
-                    reject(err_);
-                });
-        } else if (options.path) {
-            this.getFolderByPath(options.path)
-                .then(function (data) {
-                    resolve(data);//no need to transform, happens in getFolderByPath
-                })
-                .catch(function (err_) {
-                    this.log.error(err_);
-                    reject(err_);
-                });
-        } else {
-            err = 'No ID or path provided. Folder cannot be retrieved. Options passed: ' + JSON.stringify(options);
-            this.log.error(err);
-            reject(err);
+                    .then(function (data) {
+                        try {
+                            console.log('got folder data: ' + data.response);
+
+                            if (!data.response) {
+                                console.log('server returned no items');
+                                reject(data);
+                            }
+                            resolve(self.transformFolder(options.id, data.response));
+                        } catch(err_) {
+                            console.log('bad data recieved from server: ' + err_);
+                            reject(err_);
+                        }
+                    })
+                    .catch(function (err_) {
+                        reject(err_);
+                    });
+            } else if (options.path) {
+                self.getFolderByPath(options.path)
+                    .then(function (data) {
+                        resolve(data);//no need to transform, happens in getFolderByPath
+                    })
+                    .catch(function (err_) {
+                        self.log.error(err_);
+                        reject(err_);
+                    });
+            } else {
+                err = 'No ID or path provided. Folder cannot be retrieved. Options passed: ' + JSON.stringify(options);
+                self.log.error(err);
+                reject(err);
+            }
+        } catch(err_) {
+            console.log('unknown error: ' + err_);
+            reject(err_);
         }
         return folder;
     }
@@ -118,18 +174,24 @@ class IntelligenceBank {
      * service will be caching everything by both path and ID, however, so we will
      * only be falling back to this source of truth as the cache expires.
      */
-    getFolderByPath(pathToMatch, currentPath = '', currentFolderId = '') {
+    getFolderByPath(pathToMatch, currentPath, currentFolderId) {
+        console.log('getting folder by path');
+        currentPath = currentPath || '';
+        currentFolderId = currentFolderId || '';
         var resolve;
         var reject;
         var folder = new Promise(function (resolve_, reject_) {
             resolve = resolve_;
             reject = reject_;
         });
-        var options = {qs: {
-            p10: this.apikey,
-            p20: this.useruuid,
-            folderuuid: currentFolderId
-        }};
+        var options = {
+            uri: this.baseUrl + IB_PATHS.RESOURCE,
+            qs: {
+                p10: this.apikey,
+                p20: this.useruuid,
+                folderuuid: currentFolderId
+            }
+        };
         // eslint-disable-next-line curly
         if (currentFolderId === '') delete options.qs.folderuuid;
         this.makeHTTPCall(options)
@@ -175,18 +237,23 @@ class IntelligenceBank {
     getAssetInfo(options) {
         this.getAssetFromTree(options);
     }
-    getAssetFromTree(targetOptions, currentPath = '', currentFolderId = '') {
+    getAssetFromTree(targetOptions, currentPath, currentFolderId) {
+        currentPath = currentPath || '';
+        currentFolderId = currentFolderId || '';
         var resolve;
         var reject;
         var folder = new Promise(function (resolve_, reject_) {
             resolve = resolve_;
             reject = reject_;
         });
-        var options = {qs: {
-            p10: this.apikey,
-            p20: this.useruuid,
-            folderuuid: currentFolderId
-        }};
+        var options = {
+            uri: this.baseUrl + IB_PATHS.RESOURCE,
+            qs: {
+                p10: this.apikey,
+                p20: this.useruuid,
+                folderuuid: currentFolderId
+            }
+        };
         // eslint-disable-next-line curly
         if (currentFolderId === '') delete options.qs.folderuuid;
         this.makeHTTPCall(options)

@@ -1,7 +1,8 @@
 var exports = module.exports = {};
 var _ = require('lodash');
-var Log = require('log');
-var log = new Log();
+//var Log = require('log');
+//var log = new Log();
+var config = require('./intelligence_bank_config.json');
 //var config = require('./config.json');
 //var env = config.env;
 
@@ -9,12 +10,13 @@ var AWS = require('aws-sdk');
 AWS.config.loadFromPath('./src/aws.json');
 var docClient = new AWS.DynamoDB.DocumentClient();
 
-var IntelligenceBank = require('./intellignece_bank_client.js');
+var IntelligenceBank = require('./intelligence_bank_client.js');
 
-const IB_API_URL = 'apius.intelligencebank.com';
+const IB_API_URL = 'https://apius.intelligencebank.com';
 
 var transformFolderToExpected = function (folderId, data) {
     var transformed = data;
+    transformed.items = [];
     delete transformed.folderuuid;
     /* eslint-disable camelcase */
     transformed.asset_type = 'folder';
@@ -23,14 +25,19 @@ var transformFolderToExpected = function (folderId, data) {
     transformed.type = 'folder';
     transformed.created = data.createdtime;
     delete transformed.createdtime;
-    transformed.items = _.map(data.resource, function (item) {
+    console.log('items: ' + JSON.stringify(transformed.items));
+    console.log('resource: ' + JSON.stringify(transformed.resource));
+    transformed.items = transformed.items.concat(_.map(data.resource || [], function (item) {
         return transformResourceToExpected(item);
-    });
+    }));
     delete transformed.resource;
+    console.log('items: ' + JSON.stringify(transformed.items));
+    console.log('folder: ' + JSON.stringify(transformed.folder));
     transformed.items = transformed.items.concat(_.map(data.folder, function (item) {
         return transformFolderToExpected(item, item.folderuuid);
     }));
     delete transformed.folder;
+    return transformed;
 };
 
 var transformResourceToExpected = function (resourceLocationUrl, data) {
@@ -61,12 +68,12 @@ var transformResourceToExpected = function (resourceLocationUrl, data) {
         }
     });
 
-
+    return transformed;
 };
 
 var ibClient = new IntelligenceBank({
     baseUrl: IB_API_URL,
-    log: Log,
+    //log: Log,
     transformFolder: transformFolderToExpected,
     transformAsset: transformResourceToExpected
 });
@@ -75,14 +82,18 @@ var ibClient = new IntelligenceBank({
 exports.init = function () {
     'use strict';
 
-    docClient.get({
-        TableName: 'intelligence_bank_keys',
-        Key: {
-            'key_name': 'apikey'
-        }
-    }, function (err, data) {
-        if (err || !Object.keys(data).length) {
+//    docClient.get({
+//        TableName: 'intelligence_bank_keys',
+//        Key: {
+//            'key_name': 'apikey'
+//        }
+//    }, function (err, data) {
+//        if (err || !Object.keys(data).length) {
+            console.log('manually retrieving keys');
             ibClient.connect({
+                username: config.username,
+                password: config.password,
+                instanceUrl: config.instanceUrl,
                 onConnect: function (data_) {
                     //store in dynamo
                     docClient.put({TableName: 'intelligence_bank_keys', Item: {
@@ -96,13 +107,14 @@ exports.init = function () {
                     });
                 }
             });
-        } else {
-            ibClient.connect({
-                apikey: data.Item.apikey,
-                useruuid: data.Item.useruuid
-            });
-        }
-    });
+//        } else {
+//            console.log('retrieving stored key');
+//            ibClient.connect({
+//                apikey: data.Item.apikey,
+//                useruuid: data.Item.useruuid
+//            });
+//        }
+//    });
 };
 
 /*
@@ -110,6 +122,7 @@ exports.init = function () {
  * @param r (function) the function the calls the resolve for the Promise
  */
 exports.getAssetInfo = function (assetId, r) {
+    console.log('getting asset');
     docClient.get({
         TableName: 'intelligence_bank_cache',
         Key: {
@@ -117,19 +130,24 @@ exports.getAssetInfo = function (assetId, r) {
         }
     }, function (err, data) {
         if (err || !Object.keys(data).length) {
-            ibClient.getAssetInfo({id: assetId})
+            console.log('manually retrieving folder');
+            ibClient.getFolderInfo({id: assetId})
                 .then(function (data_) {
+                    console.log('caching asset: ' + JSON.stringify(data_));
                     //store in dynamo
-                    docClient.put({TableName: 'intelligence_bank_cache', Item: data_}, function (err_) {
-                        if (err_) {
-                            console.error('cache store failed: ' + err_);
-                        }
-                    });
+                    //docClient.put({TableName: 'intelligence_bank_cache', Item: data_}, function (err_) {
+                    //    if (err_) {
+                    //        console.error('cache store failed: ' + err_);
+                    //    }
+                    //});
+                    r(data_);
                 })
                 .catch(function (err_) {
                     console.log('Could not retrieve asset ' + err_);
+                    r('ERROR: 500. Details: ' + err_);
                 });
         } else {
+            console.log('asset cache hit');
             r(data.Item);
         }
     });
