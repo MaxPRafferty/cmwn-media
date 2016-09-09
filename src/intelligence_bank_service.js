@@ -89,9 +89,9 @@ exports.init = function () {
                         'key_name': 'apikey',
                         useruuid: data_.useruuid,
                         apikey: data_.apikey
-                    }}, function (err) {
-                        if (err) {
-                            console.error('cache store failed: ' + err);
+                    }}, function (err_) {
+                        if (err_) {
+                            console.error('cache store failed: ' + err_);
                         }
                     });
                 }
@@ -110,11 +110,29 @@ exports.init = function () {
  * @param r (function) the function the calls the resolve for the Promise
  */
 exports.getAssetInfo = function (assetId, r) {
-    if (!isNaN(parseInt(assetId, 10))) {
-        getAssetInfoById(assetId, r);
-    } else {
-        getAssetInfoByPath(assetId, r);
-    }
+    docClient.get({
+        TableName: 'intelligence_bank_cache',
+        Key: {
+            'id': assetId
+        }
+    }, function (err, data) {
+        if (err || !Object.keys(data).length) {
+            ibClient.getAssetInfo({id: assetId})
+                .then(function (data_) {
+                    //store in dynamo
+                    docClient.put({TableName: 'intelligence_bank_cache', Item: data_}, function (err_) {
+                        if (err_) {
+                            console.error('cache store failed: ' + err_);
+                        }
+                    });
+                })
+                .catch(function (err_) {
+                    console.log('Could not retrieve asset ' + err_);
+                });
+        } else {
+            r(data.Item);
+        }
+    });
 };
 
 /*
@@ -123,47 +141,5 @@ exports.getAssetInfo = function (assetId, r) {
  */
 exports.getAsset = function (assetId, r) {
     'use strict';
-
-    getAssetOrFolder(assetId);
-
-    var r2;
-    var p2 = new Promise(resolve => {
-        r2 = data => {
-            resolve(data);
-        };
-    });
-
-    p2.then(data => {
-        if (data) {
-            connection.ready(function () {
-                log.debug('getAsset Ready');
-                connection.getFileInfo(
-                    data.media_id + '?fields=shared_link',
-                    function (fileErr, fileResult) {
-                        if (fileResult) {
-                            log.info('We have a file');
-                            if (fileResult.shared_link) {
-                                r({
-                                    url: fileResult.shared_link.download_url
-                                });
-                            } else {
-                                r();
-                            }
-                        } else {
-                            log.info('We have a folder');
-                            r({ status: 421 });
-                        }
-                    }
-                );
-            });
-        } else {
-            r();
-        }
-    });
-
-    if ('' + parseInt(assetId, 10) === assetId) {
-        r2({ 'media_id': assetId });
-    } else {
-        getAssetInfoByPath(assetId, r2);
-    }
+    r('google.com');
 };
