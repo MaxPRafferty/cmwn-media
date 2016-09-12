@@ -58,15 +58,17 @@ var transformResourceToExpected = function (resourceLocationUrl, data) {
     transformed.src = resourceLocationUrl + transformed.media_id;
     transformed.thumb = resourceLocationUrl + transformed.media_id + '&compressiontype=2&size=25';
 
-    data.tags.forEach(tag => {
-        if (tag.indexOf('asset_type') === 0) {
-            transformed.asset_type = tag.split('-')[1]; // eslint-disable-line camelcase
-        } else if (~tag.indexOf(':')) {
-            transformed[tag.split(':')[0]] = tag.split(':')[1];
-        } else {
-            transformed[tag] = true; // eslint-disable-line camelcase
-        }
-    });
+    data.tags = data.tags || [];
+
+    //data.tags.forEach(tag => {
+    //    if (tag.indexOf('asset_type') === 0) {
+    //        transformed.asset_type = tag.split('-')[1]; // eslint-disable-line camelcase
+    //    } else if (~tag.indexOf(':')) {
+    //        transformed[tag.split(':')[0]] = tag.split(':')[1];
+    //    } else {
+    //        transformed[tag] = true; // eslint-disable-line camelcase
+    //    }
+    //});
 
     return transformed;
 };
@@ -131,7 +133,7 @@ exports.getAssetInfo = function (assetId, r) {
     }, function (err, data) {
         if (err || !Object.keys(data).length) {
             console.log('manually retrieving folder');
-            ibClient.getFolderInfo({id: assetId})
+            ibClient.getAssetInfo({id: assetId})
                 .then(function (data_) {
                     console.log('caching asset: ' + JSON.stringify(data_));
                     //store in dynamo

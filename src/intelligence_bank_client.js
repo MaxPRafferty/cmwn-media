@@ -6,7 +6,8 @@ require('request-debug')(httprequest);
 
 const IB_PATHS = {
     LOGIN: '/webapp/1.0/login',
-    RESOURCE: '/webapp/1.0/resources'
+    RESOURCE: '/webapp/1.0/resources',
+    SEARCH: '/webapp/1.0/search'
 };
 
 const IB_ERRORS = {
@@ -223,8 +224,68 @@ class IntelligenceBank {
             });
         return folder;
     }
+    getAssetInfo(options) {
+        //this.getAssetFromTree(options);
+        var self = this;
+        var resolve;
+        var reject;
+        var err;
+        var file = new Promise(function (resolve_, reject_) {
+            resolve = resolve_;
+            reject = reject_;
+        });
+        console.log('getting asset with apikey: ' + self.apikey);
+        //very simple. If an id is provided, retrieve it directly. If a path is provided, walk the tree until it is found
+        try {
+            if (options.id) {
+                console.log('getting asset by id');
+                self.makeHTTPCall({
+                    uri: self.baseUrl + IB_PATHS.SEARCH,
+                    qs: {
+                        p10: self.apikey,
+                        p20: self.useruuid,
+                        searchterm: options.id
+                    }
+                })
+                    .then(function (data) {
+                        try {
+                            console.log('got asset data: ' + data.response);
+
+                            if (!data.doc || data.numFound !== '1') {
+                                console.log('server returned no items');
+                                reject(data);
+                            }
+                            resolve(self.transformAsset(options.id, data.doc[0]));
+                        } catch(err_) {
+                            console.log('bad data recieved from server: ' + err_);
+                            reject(err_);
+                        }
+                    })
+                    .catch(function (err_) {
+                        reject(err_);
+                    });
+            } else if (options.path) {
+                self.getAssetFromTree(options.path)
+                    .then(function (data) {
+                        resolve(data);//no need to transform, happens in getAssetsFromTreee
+                    })
+                    .catch(function (err_) {
+                        self.log.error(err_);
+                        reject(err_);
+                    });
+            } else {
+                err = 'No ID or path provided. Asset cannot be retrieved. Options passed: ' + JSON.stringify(options);
+                self.log.error(err);
+                reject(err);
+            }
+        } catch(err_) {
+            console.log('unknown error: ' + err_);
+            reject(err_);
+        }
+        return file;
+    }
     /**
-     * getAssetInfo
+     * getAssetFromTree
      * There is some definite weirdness with the IB API. Namely, they seem to hate returning identities.
      * As a result, asset information can only be retrieved by accessing the folder it belongs to.
      * As of my current understanding of their API, only raw assets can be retrieved by direct ID.
@@ -234,9 +295,6 @@ class IntelligenceBank {
      * At that point, we will need to write a cron job to just walk the tree, and prime the cache with all
      * images nightly.
      */
-    getAssetInfo(options) {
-        this.getAssetFromTree(options);
-    }
     getAssetFromTree(targetOptions, currentPath, currentFolderId) {
         currentPath = currentPath || '';
         currentFolderId = currentFolderId || '';
