@@ -1,5 +1,6 @@
 {
     "username": "username",
     "password": "password",
-    "instanceUrl": "instanceUrl"
+    "instanceUrl": "instanceUrl",
+    "host": "host url"
 }

@@ -5,6 +5,7 @@ var _ = require('lodash');
 var config = require('./intelligence_bank_config.json');
 //var config = require('./config.json');
 //var env = config.env;
+var anyFirst = require('promise-any-first');
 
 var AWS = require('aws-sdk');
 AWS.config.loadFromPath('./src/aws.json');
@@ -14,62 +15,7 @@ var IntelligenceBank = require('./intelligence_bank_client.js');
 
 const IB_API_URL = 'https://apius.intelligencebank.com';
 
-/**
- * anyPromise
- * Utility method. Q-style promise resolution method. Takes an array
- * of promises and returns a promise that will resolve to the first
- * promise that resolves, ignoring rejected promises and all subsequent
- * resolutions.
- * Snippet from https://gist.github.com/jkjustjoshing/de488c63074370e28169#file-promise-any-js
- */
-var anyPromise = function (arrayOfPromises) {
-    var resolvingPromises;
-    if (!arrayOfPromises || !(arrayOfPromises instanceof Array)) {
-        throw new Error('Must pass Promise.any an array');
-    }
-
-    if (arrayOfPromises.length === 0) {
-        return Promise.resolve([]);
-    }
-
-
-    // For each promise that resolves or rejects,
-    // make them all resolve.
-    // Record which ones did resolve or reject
-    resolvingPromises = arrayOfPromises.map(function (promise) {
-        return promise.then(function (result) {
-            return {
-                resolve: true,
-                result: result
-            };
-        }, function (error) {
-            return {
-                resolve: false,
-                result: error
-            };
-        });
-    });
-
-    return Promise.all(resolvingPromises).then(function (results) {
-        // Count how many passed/failed
-        var passed = [], failed = [], allFailed = true;
-        results.forEach(function (result) {
-            if (result.resolve) {
-                allFailed = false;
-            }
-            passed.push(result.resolve ? result.result : null);
-            failed.push(result.resolve ? null : result.result);
-        });
-
-        if (allFailed) {
-            throw failed;
-        } else {
-            return passed;
-        }
-    });
-};
-
-var transformFolderToExpected = function (folderId, data) {
+var transformFolderToExpected = function (resourceLocationUrl, folderId, data) {
     var transformed = data;
     transformed.items = [];
     delete transformed.folderuuid;
@@ -83,13 +29,13 @@ var transformFolderToExpected = function (folderId, data) {
     console.log('items: ' + JSON.stringify(transformed.items));
     console.log('resource: ' + JSON.stringify(transformed.resource));
     transformed.items = transformed.items.concat(_.map(data.resource || [], function (item) {
-        return transformResourceToExpected(item);
+        return transformResourceToExpected(resourceLocationUrl, item);
     }));
     delete transformed.resource;
     console.log('items: ' + JSON.stringify(transformed.items));
     console.log('folder: ' + JSON.stringify(transformed.folder));
     transformed.items = transformed.items.concat(_.map(data.folder, function (item) {
-        return transformFolderToExpected(item, item.folderuuid);
+        return transformFolderToExpected(resourceLocationUrl, item.folderuuid, item);
     }));
     delete transformed.folder;
     return transformed;
@@ -104,7 +50,7 @@ var transformResourceToExpected = function (resourceLocationUrl, data) {
         value: null
     };
     /* eslint-disable camelcase */
-    transformed.media_id = data.resourceuuid;
+    transformed.media_id = data.uuid;
     //nor mime type. double hmmmm
     transformed.mime_type = null;
     /* eslint-enable camelcase */
@@ -151,6 +97,7 @@ exports.init = function () {
                 username: config.username,
                 password: config.password,
                 instanceUrl: config.instanceUrl,
+                ownUrl: config.host,
                 onConnect: function (data_) {
                     //store in dynamo
                     docClient.put({TableName: 'intelligence_bank_keys', Item: {
@@ -190,7 +137,7 @@ exports.getAssetInfo = function (assetId, r) {
             console.log('manually retrieving folder');
             //we do not know at this point if we have a folder or an asset. The only way to know
             //is to check both. One call will always fail, one will always succeed.
-            anyPromise([ibClient.getAssetInfo({id: assetId}), ibClient.getFolderInfo({id: assetId})])
+            anyFirst([ibClient.getAssetInfo({id: assetId}), ibClient.getFolderInfo({id: assetId})])
                 .then(function (data_) {
                     console.log('caching asset: ' + JSON.stringify(data_));
                     //store in dynamo
@@ -218,5 +165,5 @@ exports.getAssetInfo = function (assetId, r) {
  */
 exports.getAsset = function (assetId, r) {
     'use strict';
-    r('google.com');
+    r({url: ibClient.getAssetUrl(assetId)});
 };

@@ -86,6 +86,11 @@ app.get('/f/*', function (req, res) {
     var assetId = req.params[0] || '0';
     log.debug('Asset Id: ' + assetId);
 
+    var query = '';
+    if (~req.url.indexOf('?')) {
+        query = '?' + req.url.split('?')[1];
+    }
+
     var r;
     var p = new Promise(resolve => {
         r = data => {
@@ -96,7 +101,10 @@ app.get('/f/*', function (req, res) {
     p.then(data => {
         if (data && data.url) {
             request
-                .get(data.url)
+                .get({
+                    url: data.url, 
+                    headers: { Cookie: '_aid=18ec5caaa73230298b5bc42aab395d50_cgfrj9dg4n3nbehbeal4r6sqo2;' }
+                })
                 .on('response', function (response) {
                     response.headers['cache-control'] = 'public, max-age=604800';
                     response.headers.etag = crypto.createHash('md5').update(data.url).digest('hex');
@@ -107,7 +115,7 @@ app.get('/f/*', function (req, res) {
         }
     });
 
-    service.getAsset(assetId, r);
+    service.getAsset(assetId + query, r);
 });
 
 // ping the service (used for health checks

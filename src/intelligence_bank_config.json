@@ -1,5 +1,6 @@
 {
     "username": "admin@changemyworldnow.com",
     "password": "WonderWoman2016",
-    "instanceUrl": "changemyworldnow.intelligencebank.com"
+    "instanceUrl": "changemyworldnow.intelligencebank.com",
+    "host": "http://localhost:3000/"
 }

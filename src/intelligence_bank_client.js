@@ -4,6 +4,8 @@ var httprequest = require('request');
 httprequest.debug = true;
 require('request-debug')(httprequest);
 
+const IB_API_ENDPOINT = 'https://apius.intelligencebank.com';
+
 const IB_PATHS = {
     LOGIN: '/webapp/1.0/login',
     RESOURCE: '/webapp/1.0/resources',
@@ -21,8 +23,10 @@ class IntelligenceBank {
         this.apikey = '';
         this.useruuid = '';
         this.baseUrl = options.baseUrl;
+        this.ownUrl = options.ownUrl;
         this.request = httprequest.defaults({
             json: true,
+            /* MPR: I do not know why this cookie must be set. But this cookie must be set. */
             headers: {
                 Cookie: '_aid=18ec5caaa73230298b5bc42aab395d50_cgfrj9dg4n3nbehbeal4r6sqo2;'
             }
@@ -31,11 +35,11 @@ class IntelligenceBank {
         this.transformFolder = options.transformFolder;
         this.transformAsset = options.transformAsset;
 
-        _.each(this, function (property, name) {
-            if (_.isFunction(property)) {
-                self[name] = property.bind(self);
-            }
-        });
+        //_.each(this, function (property, name) {
+        //    if (_.isFunction(property)) {
+        //        self[name] = property.bind(self);
+        //    }
+        //});
     }
     makeHTTPCall(options) {
         var self = this;
@@ -91,17 +95,14 @@ class IntelligenceBank {
         console.log('starting connect');
         return self.makeHTTPCall(requestParams)
             .then(function (data) {
+                var resourceUrl = self.ownUrl;
                 options.onConnect(data);
                 self.apikey = data.apikey;
                 self.useruuid = data.useruuid;
+                console.log('guhh' + self.apikey);
                 console.log('setting key: ' + data.apikey);
-                self.transformAsset = self.transformAsset.bind(
-                        null,
-                        options.instanceUrl + IB_PATHS.RESOURCE +
-                            '?p10=' + self.apikey +
-                            '&p20=' + self.useruuid +
-                            '&fileuuid='
-                );
+                self.transformAsset = self.transformAsset.bind(null, resourceUrl);
+                self.transformFolder = self.transformFolder.bind(null, resourceUrl);
                 console.log('connection success. setting keys');
                 return Promise.resolve(data);
             })
@@ -255,7 +256,7 @@ class IntelligenceBank {
                                 console.log('server returned no items');
                                 reject(data);
                             }
-                            resolve(self.transformAsset(options.id, data.doc[0]));
+                            resolve(self.transformAsset(data.doc[0]));
                         } catch(err_) {
                             console.log('bad data recieved from server: ' + err_);
                             reject(err_);
@@ -349,6 +350,15 @@ class IntelligenceBank {
                 reject(err);
             });
         return folder;
+    }
+    getAssetUrl(assetId) {
+        var resourceUrl =
+            IB_API_ENDPOINT + IB_PATHS.RESOURCE +
+            '?p10=' + this.apikey +
+            '&p20=' + this.useruuid +
+            '&fileuuid=' + assetId.replace('?', '&');
+        console.log('trying to display image from ' + resourceUrl);
+        return resourceUrl;
     }
 }
 
