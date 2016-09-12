@@ -19,11 +19,9 @@ const IB_ERRORS = {
 
 class IntelligenceBank {
     constructor(options) {
-        var self = this;
         this.apikey = '';
         this.useruuid = '';
         this.baseUrl = options.baseUrl;
-        this.ownUrl = options.ownUrl;
         this.request = httprequest.defaults({
             json: true,
             /* MPR: I do not know why this cookie must be set. But this cookie must be set. */
@@ -34,12 +32,6 @@ class IntelligenceBank {
         this.log = options.log || console;
         this.transformFolder = options.transformFolder;
         this.transformAsset = options.transformAsset;
-
-        //_.each(this, function (property, name) {
-        //    if (_.isFunction(property)) {
-        //        self[name] = property.bind(self);
-        //    }
-        //});
     }
     makeHTTPCall(options) {
         var self = this;
@@ -69,14 +61,15 @@ class IntelligenceBank {
     connect(options) {
         var self = this;
         var defaultOptions = {
-            onConnect: _.identity
+            onConnect: _.identity,
+            ownUrl: 'https://media.changemyworldnow.com'
         };
         var formData = {
             p70: options.username,
             p80: options.password,
             p90: options.instanceUrl
         };
-        console.log('logging in as ' + JSON.stringify(options.username));
+        console.log('logging in as ' + JSON.stringify(options.username) + ' at ' + options.ownUrl);
         var requestParams = {
             method: 'POST',
             uri: self.baseUrl + IB_PATHS.LOGIN,
@@ -84,6 +77,8 @@ class IntelligenceBank {
         };
 
         options = _.defaults(options, defaultOptions);
+
+        self.ownUrl = options.ownUrl;
 
         if (options.apikey != null) {
             self.apikey = options.apikey;
@@ -95,7 +90,7 @@ class IntelligenceBank {
         console.log('starting connect');
         return self.makeHTTPCall(requestParams)
             .then(function (data) {
-                var resourceUrl = self.ownUrl;
+                var resourceUrl = self.ownUrl + 'f/';
                 options.onConnect(data);
                 self.apikey = data.apikey;
                 self.useruuid = data.useruuid;
