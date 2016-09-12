@@ -14,6 +14,61 @@ var IntelligenceBank = require('./intelligence_bank_client.js');
 
 const IB_API_URL = 'https://apius.intelligencebank.com';
 
+/**
+ * anyPromise
+ * Utility method. Q-style promise resolution method. Takes an array
+ * of promises and returns a promise that will resolve to the first
+ * promise that resolves, ignoring rejected promises and all subsequent
+ * resolutions.
+ * Snippet from https://gist.github.com/jkjustjoshing/de488c63074370e28169#file-promise-any-js
+ */
+var anyPromise = function (arrayOfPromises) {
+    var resolvingPromises;
+    if (!arrayOfPromises || !(arrayOfPromises instanceof Array)) {
+        throw new Error('Must pass Promise.any an array');
+    }
+
+    if (arrayOfPromises.length === 0) {
+        return Promise.resolve([]);
+    }
+
+
+    // For each promise that resolves or rejects,
+    // make them all resolve.
+    // Record which ones did resolve or reject
+    resolvingPromises = arrayOfPromises.map(function (promise) {
+        return promise.then(function (result) {
+            return {
+                resolve: true,
+                result: result
+            };
+        }, function (error) {
+            return {
+                resolve: false,
+                result: error
+            };
+        });
+    });
+
+    return Promise.all(resolvingPromises).then(function (results) {
+        // Count how many passed/failed
+        var passed = [], failed = [], allFailed = true;
+        results.forEach(function (result) {
+            if (result.resolve) {
+                allFailed = false;
+            }
+            passed.push(result.resolve ? result.result : null);
+            failed.push(result.resolve ? null : result.result);
+        });
+
+        if (allFailed) {
+            throw failed;
+        } else {
+            return passed;
+        }
+    });
+};
+
 var transformFolderToExpected = function (folderId, data) {
     var transformed = data;
     transformed.items = [];
@@ -133,7 +188,9 @@ exports.getAssetInfo = function (assetId, r) {
     }, function (err, data) {
         if (err || !Object.keys(data).length) {
             console.log('manually retrieving folder');
-            ibClient.getAssetInfo({id: assetId})
+            //we do not know at this point if we have a folder or an asset. The only way to know
+            //is to check both. One call will always fail, one will always succeed.
+            anyPromise([ibClient.getAssetInfo({id: assetId}), ibClient.getFolderInfo({id: assetId})])
                 .then(function (data_) {
                     console.log('caching asset: ' + JSON.stringify(data_));
                     //store in dynamo
