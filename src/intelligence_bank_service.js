@@ -2,13 +2,13 @@ var exports = module.exports = {};
 var _ = require('lodash');
 //var Log = require('log');
 //var log = new Log();
-var config = require('./intelligence_bank_config.json');
-//var config = require('./config.json');
+var config = require('../conf/intelligence_bank_config.json');
+//var config = require('../conf/config.json');
 //var env = config.env;
 var anyFirst = require('promise-any-first');
 
 var AWS = require('aws-sdk');
-AWS.config.loadFromPath('./src/aws.json');
+AWS.config.loadFromPath('../conf/src/aws.json');
 var docClient = new AWS.DynamoDB.DocumentClient();
 
 var IntelligenceBank = require('./intelligence_bank_client.js');

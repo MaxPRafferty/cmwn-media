@@ -8,10 +8,10 @@ var crypto = require('crypto');
 //var service = require('./boxService.js');
 //var storage = require('./box_storage.js');
 var service = require('./intelligence_bank_service.js');
-var rollbarKeys = require('./rollbar.json');
+var rollbarKeys = require('../conf/rollbar.json');
 var AWS = require('aws-sdk');
 
-AWS.config.loadFromPath('./src/aws.json');
+AWS.config.loadFromPath('../conf/aws.json');
 var docClient = new AWS.DynamoDB.DocumentClient();
 
 const CACHE_EXPIRY = 1; //hours

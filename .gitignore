@@ -35,6 +35,9 @@ jspm_packages
 # Optional REPL history
 .node_repl_history
 
+conf/*
+!conf/README.md
+!conf/*.dist
 src/config.json
 src/aws.json
 src/rollbar.json
