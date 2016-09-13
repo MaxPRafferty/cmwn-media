@@ -38,7 +38,9 @@ jspm_packages
 src/config.json
 src/aws.json
 src/rollbar.json
+src/intelligence_bank_config.json
 
 media/*
 
 **/*.swp
+
