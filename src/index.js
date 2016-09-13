@@ -11,7 +11,7 @@ var service = require('./intelligence_bank_service.js');
 var rollbarKeys = require('../conf/rollbar.json');
 var AWS = require('aws-sdk');
 
-AWS.config.loadFromPath('../conf/aws.json');
+AWS.config.loadFromPath('./conf/aws.json');
 var docClient = new AWS.DynamoDB.DocumentClient();
 
 const CACHE_EXPIRY = 1; //hours
@@ -61,18 +61,18 @@ app.get(/^\/a\/{0,1}(.+)?/i, function (req, res) {
         }
     });
 
-//    docClient.get(params, function (err, data) {
-//        if (err || !Object.keys(data).length) {
+    docClient.get(params, function (err, data) {
+        if (err || !Object.keys(data).length) {
             service.getAssetInfo(assetId, r);
-//        } else {
-//            if (data.Item.expires - Math.floor((new Date).getTime() / 1000) < 0 ) {
-//                service.getAssetInfo(assetId, r);
-//            } else {
-//                data.Item.data.cached = true;
-//                r(data.Item.data);
-//            }
-//        }
-//    });
+        } else {
+            if (data.Item.expires - Math.floor((new Date).getTime() / 1000) < 0 ) {
+                service.getAssetInfo(assetId, r);
+            } else {
+                data.Item.data.cached = true;
+                r(data.Item.data);
+            }
+        }
+    });
 
 });
 
@@ -102,7 +102,7 @@ app.get('/f/*', function (req, res) {
         if (data && data.url) {
             request
                 .get({
-                    url: data.url, 
+                    url: data.url,
                     headers: { Cookie: '_aid=18ec5caaa73230298b5bc42aab395d50_cgfrj9dg4n3nbehbeal4r6sqo2;' }
                 })
                 .on('response', function (response) {
