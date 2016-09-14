@@ -2,13 +2,13 @@ var exports = module.exports = {};
 var _ = require('lodash');
 //var Log = require('log');
 //var log = new Log();
-var config = require('./intelligence_bank_config.json');
-//var config = require('./config.json');
+var config = require('../conf/intelligence_bank_config.json');
+//var config = require('../conf/config.json');
 //var env = config.env;
 var anyFirst = require('promise-any-first');
 
 var AWS = require('aws-sdk');
-AWS.config.loadFromPath('./src/aws.json');
+AWS.config.loadFromPath('./conf/aws.json');
 var docClient = new AWS.DynamoDB.DocumentClient();
 
 var IntelligenceBank = require('./intelligence_bank_client.js');
@@ -43,6 +43,7 @@ var transformFolderToExpected = function (resourceLocationUrl, folderId, data) {
 
 var transformResourceToExpected = function (resourceLocationUrl, data) {
     var transformed = data;
+    console.log('Got resource: ' + resourceLocationUrl + ' with data: ' + JSON.stringify(data));
     transformed.type = 'file';
     //no hash currently being returned. hmmmmmm
     transformed.check = {
@@ -85,13 +86,13 @@ var ibClient = new IntelligenceBank({
 exports.init = function () {
     'use strict';
 
-//    docClient.get({
-//        TableName: 'intelligence_bank_keys',
-//        Key: {
-//            'key_name': 'apikey'
-//        }
-//    }, function (err, data) {
-//        if (err || !Object.keys(data).length) {
+    docClient.get({
+        TableName: 'intelligence_bank_keys',
+        Key: {
+            'key_name': 'apikey'
+        }
+    }, function (err, data) {
+        if (err || !Object.keys(data).length) {
             console.log('manually retrieving keys');
             ibClient.connect({
                 username: config.username,
@@ -111,14 +112,16 @@ exports.init = function () {
                     });
                 }
             });
-//        } else {
-//            console.log('retrieving stored key');
-//            ibClient.connect({
-//                apikey: data.Item.apikey,
-//                useruuid: data.Item.useruuid
-//            });
-//        }
-//    });
+        } else {
+            console.log('retrieving stored key');
+            ibClient.connect({
+                apikey: data.Item.apikey,
+                useruuid: data.Item.useruuid,
+                instanceUrl: config.instanceUrl,
+                ownUrl: config.host,
+            });
+        }
+    });
 };
 
 /*
@@ -126,37 +129,30 @@ exports.init = function () {
  * @param r (function) the function the calls the resolve for the Promise
  */
 exports.getAssetInfo = function (assetId, r) {
-    console.log('getting asset');
-    docClient.get({
-        TableName: 'intelligence_bank_cache',
-        Key: {
-            'id': assetId
-        }
-    }, function (err, data) {
-        if (err || !Object.keys(data).length) {
-            console.log('manually retrieving folder');
-            //we do not know at this point if we have a folder or an asset. The only way to know
-            //is to check both. One call will always fail, one will always succeed.
-            anyFirst([ibClient.getAssetInfo({id: assetId}), ibClient.getFolderInfo({id: assetId})])
-                .then(function (data_) {
-                    console.log('caching asset: ' + JSON.stringify(data_));
-                    //store in dynamo
-                    //docClient.put({TableName: 'intelligence_bank_cache', Item: data_}, function (err_) {
-                    //    if (err_) {
-                    //        console.error('cache store failed: ' + err_);
-                    //    }
-                    //});
-                    r(data_);
-                })
-                .catch(function (err_) {
-                    console.log('Could not retrieve asset ' + err_);
-                    r('ERROR: 500. Details: ' + err_);
-                });
-        } else {
-            console.log('asset cache hit');
-            r(data.Item);
-        }
-    });
+    var requestData = {};
+    if (assetId != null && assetId !== 0 && assetId !== '0' && assetId !== '') {
+        requestData.id = assetId;
+    }
+    console.log('manually retrieving asset or folder with id ' + assetId);
+    //we do not know at this point if we have a folder or an asset. The only way to know
+    //is to check both. One call will always fail, one will always succeed.
+    anyFirst([ibClient.getAssetInfo(requestData), ibClient.getFolderInfo(requestData)])
+        .then(function (data_) {
+            data_.id = data_.media_id || data_.uuid;
+            //somehow it makes sense that dynamodb cant store empty arrays or sets... so strip em.
+            data_ = _.reduce(data_, function (acc, val, key) {
+                if (val !== [] && val !== '' && val != null) {
+                    acc[key] = val;
+                }
+                return acc;
+            }, {});
+
+            r(data_);
+        })
+        .catch(function (err_) {
+            console.log('Could not retrieve asset ' + err_);
+            r('ERROR: 500. Details: ' + err_);
+        });
 };
 
 /*

@@ -75,10 +75,14 @@ class IntelligenceBank {
             uri: self.baseUrl + IB_PATHS.LOGIN,
             form: formData
         };
+        var resourceUrl;
 
         options = _.defaults(options, defaultOptions);
 
         self.ownUrl = options.ownUrl;
+        resourceUrl = self.ownUrl + 'f/';
+        self.transformAsset = self.transformAsset.bind(null, resourceUrl);
+        self.transformFolder = self.transformFolder.bind(null, resourceUrl);
 
         if (options.apikey != null) {
             self.apikey = options.apikey;
@@ -87,17 +91,13 @@ class IntelligenceBank {
             return Promise.resolve(options);
         }
 
-        console.log('starting connect');
+        console.log('logging in as ' + JSON.stringify(options.username) + ' at ' + options.ownUrl);
         return self.makeHTTPCall(requestParams)
             .then(function (data) {
-                var resourceUrl = self.ownUrl + 'f/';
                 options.onConnect(data);
                 self.apikey = data.apikey;
                 self.useruuid = data.useruuid;
-                console.log('guhh' + self.apikey);
                 console.log('setting key: ' + data.apikey);
-                self.transformAsset = self.transformAsset.bind(null, resourceUrl);
-                self.transformFolder = self.transformFolder.bind(null, resourceUrl);
                 console.log('connection success. setting keys');
                 return Promise.resolve(data);
             })
@@ -114,18 +114,21 @@ class IntelligenceBank {
             resolve = resolve_;
             reject = reject_;
         });
-        console.log('getting folder with apikey: ' + self.apikey);
+        var qs = {
+            p10: self.apikey,
+            p20: self.useruuid
+        };
+        console.log('getting folder using query: ' + JSON.stringify(options));
         //very simple. If an id is provided, retrieve it directly. If a path is provided, walk the tree until it is found
         try {
-            if (options.id) {
+            if (options.id != null || (options.id == null && options.path == null)) {
                 console.log('getting folder by id');
+                if (options.id != null) {
+                    qs.folderuuid = options.id;
+                }
                 self.makeHTTPCall({
                     uri: self.baseUrl + IB_PATHS.RESOURCE,
-                    qs: {
-                        p10: self.apikey,
-                        p20: self.useruuid,
-                        folderuuid: options.id
-                    }
+                    qs: qs
                 })
                     .then(function (data) {
                         try {
@@ -245,7 +248,7 @@ class IntelligenceBank {
                 })
                     .then(function (data) {
                         try {
-                            console.log('got asset data: ' + data.response);
+                            console.log('got asset data: ' + JSON.stringify(data));
 
                             if (!data.doc || data.numFound !== '1') {
                                 console.log('server returned no items');

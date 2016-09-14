@@ -1,7 +1,7 @@
 var exports = module.exports = {};
 var AWS = require('aws-sdk');
 
-AWS.config.loadFromPath('./src/aws.json');
+AWS.config.loadFromPath('../conf/src/aws.json');
 var docClient = new AWS.DynamoDB.DocumentClient();
 
 exports.load = function (env, callback) {
