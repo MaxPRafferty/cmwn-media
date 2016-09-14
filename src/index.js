@@ -8,6 +8,7 @@ var crypto = require('crypto');
 //var service = require('./boxService.js');
 //var storage = require('./box_storage.js');
 var service = require('./intelligence_bank_service.js');
+var IntelligenceBankConfig = require('../conf/intelligence_bank_config.json');
 var rollbarKeys = require('../conf/rollbar.json');
 var AWS = require('aws-sdk');
 
@@ -47,7 +48,7 @@ app.get(/^\/a\/{0,1}(.+)?/i, function (req, res) {
             res.send(data);
             if (!data.cached) {
                 docClient.put({TableName: 'media-cache', Item: {
-                    path: req.url,
+                    path: IntelligenceBankConfig.host + req.url,
                     expires: Math.floor((new Date).getTime() / 1000) + CACHE_EXPIRY * 360000,
                     data: data
                 }}, function (err) {
