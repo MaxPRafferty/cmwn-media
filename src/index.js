@@ -27,7 +27,7 @@ app.get(/^\/a\/{0,1}(.+)?/i, function (req, res) {
     var params = {
         TableName: 'media-cache',
         Key: {
-            'path': req.url
+            'path': IntelligenceBankConfig.host + req.url
         }
     };
 
