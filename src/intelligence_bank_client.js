@@ -1,8 +1,8 @@
 'use strict';
 var _ = require('lodash');
+var Log = require('log');
+var log = new Log('info');
 var httprequest = require('request');
-httprequest.debug = true;
-require('request-debug')(httprequest);
 
 const IB_API_ENDPOINT = 'https://apius.intelligencebank.com';
 
@@ -29,31 +29,29 @@ class IntelligenceBank {
                 Cookie: '_aid=18ec5caaa73230298b5bc42aab395d50_cgfrj9dg4n3nbehbeal4r6sqo2;'
             }
         });
-        this.log = options.log || console;
         this.transformFolder = options.transformFolder;
         this.transformAsset = options.transformAsset;
     }
     makeHTTPCall(options) {
         var self = this;
-        console.log('starting http request');
         return new Promise(function (resolve, reject) {
-            console.log('making http request to ' + options.uri);
+            log.info('making http request to ' + options.uri);
             try {
                 self.request(options, function (err, response, data) {
                     if (err) {
-                        console.error(err);
+                        log.error(err);
                         reject(err);
                     } else if (data.message === IB_ERRORS.SILLY) {
                         reject({message: 'server refused request, reason not provided. 404 assumed.', status: 404});
                     } else if (data.message === IB_ERRORS.LOGIN) {
                         reject({status: 401, message: 'Invalid Login. User not authorized'});
                     } else {
-                        console.log(data);
+                        log.info(data);
                         resolve(data);
                     }
                 });
             } catch(err) {
-                console.log(err);
+                log.error(err);
                 reject(err);
             }
         });
@@ -69,7 +67,7 @@ class IntelligenceBank {
             p80: options.password,
             p90: options.instanceUrl
         };
-        console.log('logging in as ' + JSON.stringify(options.username) + ' at ' + options.ownUrl);
+        log.info('logging in as ' + JSON.stringify(options.username || 'cached user') + ' at ' + options.ownUrl);
         var requestParams = {
             method: 'POST',
             uri: self.baseUrl + IB_PATHS.LOGIN,
@@ -87,22 +85,20 @@ class IntelligenceBank {
         if (options.apikey != null) {
             self.apikey = options.apikey;
             self.useruuid = options.useruuid;
-            console.log('connection success (cache). setting keys');
+            log.info('connection success (cache). setting keys');
             return Promise.resolve(options);
         }
 
-        console.log('logging in as ' + JSON.stringify(options.username) + ' at ' + options.ownUrl);
         return self.makeHTTPCall(requestParams)
             .then(function (data) {
                 options.onConnect(data);
                 self.apikey = data.apikey;
                 self.useruuid = data.useruuid;
-                console.log('setting key: ' + data.apikey);
-                console.log('connection success. setting keys');
+                log.info('connection success. setting keys');
                 return Promise.resolve(data);
             })
             .catch(function (err) {
-                console.log(err);
+                log.error(err);
             });
     }
     getFolderInfo(options) {
@@ -118,11 +114,11 @@ class IntelligenceBank {
             p10: self.apikey,
             p20: self.useruuid
         };
-        console.log('getting folder using query: ' + JSON.stringify(options));
+        log.info('getting folder using query: ' + JSON.stringify(options));
         //very simple. If an id is provided, retrieve it directly. If a path is provided, walk the tree until it is found
         try {
             if (options.id != null || (options.id == null && options.path == null)) {
-                console.log('getting folder by id');
+                log.info('getting folder by id');
                 if (options.id != null) {
                     qs.folderuuid = options.id;
                 }
@@ -132,15 +128,16 @@ class IntelligenceBank {
                 })
                     .then(function (data) {
                         try {
-                            console.log('got folder data: ' + data.response);
+                            log.info('got folder data for folder ' + options.id);
 
                             if (!data.response) {
-                                console.log('server returned no items');
+                                log.warn('server returned no items');
                                 reject(data);
+                            } else {
+                                resolve(self.transformFolder(options.id, data.response));
                             }
-                            resolve(self.transformFolder(options.id, data.response));
                         } catch(err_) {
-                            console.log('bad data recieved from server: ' + err_);
+                            log.error('bad data recieved from server: ' + err_);
                             reject(err_);
                         }
                     })
@@ -162,7 +159,7 @@ class IntelligenceBank {
                 reject(err);
             }
         } catch(err_) {
-            console.log('unknown error: ' + err_);
+            log.error('unknown error: ' + err_);
             reject(err_);
         }
         return folder;
@@ -175,7 +172,7 @@ class IntelligenceBank {
      * only be falling back to this source of truth as the cache expires.
      */
     getFolderByPath(pathToMatch, currentPath, currentFolderId) {
-        console.log('getting folder by path');
+        log.info('getting folder by path');
         currentPath = currentPath || '';
         currentFolderId = currentFolderId || '';
         var resolve;
@@ -233,11 +230,11 @@ class IntelligenceBank {
             resolve = resolve_;
             reject = reject_;
         });
-        console.log('getting asset with apikey: ' + self.apikey);
+        log.info('getting asset with apikey: ' + self.apikey);
         //very simple. If an id is provided, retrieve it directly. If a path is provided, walk the tree until it is found
         try {
             if (options.id) {
-                console.log('getting asset by id');
+                log.info('getting asset by id');
                 self.makeHTTPCall({
                     uri: self.baseUrl + IB_PATHS.SEARCH,
                     qs: {
@@ -248,15 +245,16 @@ class IntelligenceBank {
                 })
                     .then(function (data) {
                         try {
-                            console.log('got asset data: ' + JSON.stringify(data));
+                            log.info('got asset data for asset ' + options.id);
 
                             if (!data.doc || data.numFound !== '1') {
-                                console.log('server returned no items');
+                                log.warn('server returned no items');
                                 reject(data);
+                            } else {
+                                resolve(self.transformAsset(data.doc[0]));
                             }
-                            resolve(self.transformAsset(data.doc[0]));
                         } catch(err_) {
-                            console.log('bad data recieved from server: ' + err_);
+                            log.error('bad data recieved from server: ' + err_);
                             reject(err_);
                         }
                     })
@@ -278,7 +276,7 @@ class IntelligenceBank {
                 reject(err);
             }
         } catch(err_) {
-            console.log('unknown error: ' + err_);
+            log.error('unknown error: ' + err_);
             reject(err_);
         }
         return file;
@@ -355,7 +353,7 @@ class IntelligenceBank {
             '?p10=' + this.apikey +
             '&p20=' + this.useruuid +
             '&fileuuid=' + assetId.replace('?', '&');
-        console.log('trying to display image from ' + resourceUrl);
+        log.info('trying to display image from ' + resourceUrl);
         return resourceUrl;
     }
 }

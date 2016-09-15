@@ -64,11 +64,14 @@ app.get(/^\/a\/{0,1}(.+)?/i, function (req, res) {
 
     docClient.get(params, function (err, data) {
         if (err || !Object.keys(data).length) {
+            console.log('Getting asset from service');
             service.getAssetInfo(assetId, r);
         } else {
             if (data.Item.expires - Math.floor((new Date).getTime() / 1000) < 0 ) {
+                console.log('Cache Expired. Getting asset from service');
                 service.getAssetInfo(assetId, r);
             } else {
+                console.log('Getting asset from cache');
                 data.Item.data.cached = true;
                 r(data.Item.data);
             }

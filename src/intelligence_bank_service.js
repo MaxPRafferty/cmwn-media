@@ -1,5 +1,7 @@
 var exports = module.exports = {};
 var _ = require('lodash');
+var Log = require('log');
+var log = new Log('info');
 //var Log = require('log');
 //var log = new Log();
 var config = require('../conf/intelligence_bank_config.json');
@@ -26,14 +28,10 @@ var transformFolderToExpected = function (resourceLocationUrl, folderId, data) {
     transformed.type = 'folder';
     transformed.created = data.createdtime;
     delete transformed.createdtime;
-    console.log('items: ' + JSON.stringify(transformed.items));
-    console.log('resource: ' + JSON.stringify(transformed.resource));
     transformed.items = transformed.items.concat(_.map(data.resource || [], function (item) {
         return transformResourceToExpected(resourceLocationUrl, item);
     }));
     delete transformed.resource;
-    console.log('items: ' + JSON.stringify(transformed.items));
-    console.log('folder: ' + JSON.stringify(transformed.folder));
     transformed.items = transformed.items.concat(_.map(data.folder, function (item) {
         return transformFolderToExpected(resourceLocationUrl, item.folderuuid, item);
     }));
@@ -43,7 +41,7 @@ var transformFolderToExpected = function (resourceLocationUrl, folderId, data) {
 
 var transformResourceToExpected = function (resourceLocationUrl, data) {
     var transformed = data;
-    console.log('Got resource: ' + resourceLocationUrl + ' with data: ' + JSON.stringify(data));
+    log.info('Got resource: ' + resourceLocationUrl);
     transformed.type = 'file';
     //no hash currently being returned. hmmmmmm
     transformed.check = {
@@ -51,7 +49,7 @@ var transformResourceToExpected = function (resourceLocationUrl, data) {
         value: null
     };
     /* eslint-disable camelcase */
-    transformed.media_id = data.uuid;
+    transformed.media_id = data.resourceuuid || data.uuid;
     //nor mime type. double hmmmm
     transformed.mime_type = null;
     /* eslint-enable camelcase */
@@ -62,15 +60,25 @@ var transformResourceToExpected = function (resourceLocationUrl, data) {
 
     data.tags = data.tags || [];
 
-    //data.tags.forEach(tag => {
-    //    if (tag.indexOf('asset_type') === 0) {
-    //        transformed.asset_type = tag.split('-')[1]; // eslint-disable-line camelcase
-    //    } else if (~tag.indexOf(':')) {
-    //        transformed[tag.split(':')[0]] = tag.split(':')[1];
-    //    } else {
-    //        transformed[tag] = true; // eslint-disable-line camelcase
-    //    }
-    //});
+    data.tags.forEach(tag => {
+        if (tag.indexOf('asset_type') === 0) {
+            transformed.asset_type = tag.split('-')[1]; // eslint-disable-line camelcase
+        } else if (~tag.indexOf(':')) {
+            transformed[tag.split(':')[0]] = tag.split(':')[1];
+        } else {
+            transformed[tag] = true; // eslint-disable-line camelcase
+        }
+    });
+
+    //DynamoDB is apparently out of their damn mind and doesn't allow empty
+    // strings in their database.
+    transformed = _.reduce(transformed, function (a, v, k) {
+        if (v !== '') {
+            a[k] = v;
+        }
+        return a;
+    }, {});
+    delete transformed.versions;
 
     return transformed;
 };
@@ -93,7 +101,7 @@ exports.init = function () {
         }
     }, function (err, data) {
         if (err || !Object.keys(data).length) {
-            console.log('manually retrieving keys');
+            log.info('manually retrieving keys');
             ibClient.connect({
                 username: config.username,
                 password: config.password,
@@ -107,13 +115,13 @@ exports.init = function () {
                         apikey: data_.apikey
                     }}, function (err_) {
                         if (err_) {
-                            console.error('cache store failed: ' + err_);
+                            log.warn('cache store failed: ' + err_);
                         }
                     });
                 }
             });
         } else {
-            console.log('retrieving stored key');
+            log.info('retrieving stored key');
             ibClient.connect({
                 apikey: data.Item.apikey,
                 useruuid: data.Item.useruuid,
@@ -133,24 +141,15 @@ exports.getAssetInfo = function (assetId, r) {
     if (assetId != null && assetId !== 0 && assetId !== '0' && assetId !== '') {
         requestData.id = assetId;
     }
-    console.log('manually retrieving asset or folder with id ' + assetId);
     //we do not know at this point if we have a folder or an asset. The only way to know
     //is to check both. One call will always fail, one will always succeed.
     anyFirst([ibClient.getAssetInfo(requestData), ibClient.getFolderInfo(requestData)])
         .then(function (data_) {
             data_.id = data_.media_id || data_.uuid;
-            //somehow it makes sense that dynamodb cant store empty arrays or sets... so strip em.
-            data_ = _.reduce(data_, function (acc, val, key) {
-                if (val !== [] && val !== '' && val != null) {
-                    acc[key] = val;
-                }
-                return acc;
-            }, {});
-
             r(data_);
         })
         .catch(function (err_) {
-            console.log('Could not retrieve asset ' + err_);
+            log.error('Could not retrieve asset ' + err_);
             r('ERROR: 500. Details: ' + err_);
         });
 };
