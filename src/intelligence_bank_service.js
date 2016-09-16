@@ -64,9 +64,9 @@ var transformResourceToExpected = function (resourceLocationUrl, data) {
         if (tag.indexOf('asset_type') === 0) {
             transformed.asset_type = tag.split('-')[1]; // eslint-disable-line camelcase
         } else if (~tag.indexOf(':')) {
-            transformed[tag.split(':')[0]] = tag.split(':')[1];
+            transformed[tag.split(':')[0].toLowerCase()] = tag.split(':')[1];
         } else {
-            transformed[tag] = true; // eslint-disable-line camelcase
+            transformed[tag.toLowerCase()] = true; // eslint-disable-line camelcase
         }
     });
 
