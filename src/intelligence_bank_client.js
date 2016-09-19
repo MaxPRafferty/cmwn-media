@@ -26,7 +26,7 @@ class IntelligenceBank {
             json: true,
             /* MPR: I do not know why this cookie must be set. But this cookie must be set. */
             headers: {
-                Cookie: '_aid=18ec5caaa73230298b5bc42aab395d50_cgfrj9dg4n3nbehbeal4r6sqo2;'
+                Cookie: options.trackingCookie
             }
         });
         this.transformFolder = options.transformFolder;

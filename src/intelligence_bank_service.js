@@ -87,7 +87,8 @@ var ibClient = new IntelligenceBank({
     baseUrl: IB_API_URL,
     //log: Log,
     transformFolder: transformFolderToExpected,
-    transformAsset: transformResourceToExpected
+    transformAsset: transformResourceToExpected,
+    trackingCookie: config.trackingCookie
 });
 
 

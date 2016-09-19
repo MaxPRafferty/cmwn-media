@@ -109,7 +109,7 @@ app.get('/f/*', function (req, res) {
             request
                 .get({
                     url: data.url,
-                    headers: { Cookie: '_aid=18ec5caaa73230298b5bc42aab395d50_cgfrj9dg4n3nbehbeal4r6sqo2;' }
+                    headers: { Cookie: IntelligenceBankConfig.trackingCookie }
                 })
                 .on('response', function (response) {
                     var extension;

@@ -2,5 +2,6 @@
     "username": "username",
     "password": "password",
     "instanceUrl": "instanceUrl",
-    "host": "host url"
+    "host": "host url",
+    "trackingCookie": "cookie"
 }
