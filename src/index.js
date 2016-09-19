@@ -5,6 +5,7 @@ var express = require('express');
 var app = express();
 var request = require('request');
 var crypto = require('crypto');
+var mime = require('mime-types');
 //var service = require('./boxService.js');
 //var storage = require('./box_storage.js');
 var service = require('./intelligence_bank_service.js');
@@ -104,13 +105,23 @@ app.get('/f/*', function (req, res) {
 
     p.then(data => {
         if (data && data.url) {
+            res.contentType('image/png');
             request
                 .get({
                     url: data.url,
                     headers: { Cookie: '_aid=18ec5caaa73230298b5bc42aab395d50_cgfrj9dg4n3nbehbeal4r6sqo2;' }
                 })
                 .on('response', function (response) {
+                    var extension;
+                    var mimeType;
                     response.headers['cache-control'] = 'public, max-age=604800';
+                    extension = response.headers['content-disposition'].split('.')[1].toLowerCase().replace('"', '');
+                    mimeType = mime.lookup(extension);
+                    if (!mimeType) {
+                        mimeType = 'image/png';
+                    }
+                    response.headers['content-type'] = mimeType;
+                    response.headers['content-disposition'] = 'inline;';
                     response.headers.etag = crypto.createHash('md5').update(data.url).digest('hex');
                     return response;
                 }).pipe(res);
