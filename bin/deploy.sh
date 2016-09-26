@@ -9,14 +9,14 @@ while [ $# -gt 0 ]
 do
   case "$1" in
     -s) server="$2"; shift;;
-	  -f) filepath="$2"; shift;;
-	  -i) key="$2"; shift;;
+    -f) filepath="$2"; shift;;
+    -i) key="$2"; shift;;
     -b) bastion="$2"; shift;;
-	  --)	shift; break;;
-	  -*) echo >&2 \
-	      "$usage"
-	      exit 1;;
-	  *) break;;
+    --)	shift; break;;
+    -*) echo >&2 \
+        "$usage"
+        exit 1;;
+    *) break;;
   esac
   shift
 done
