@@ -6,6 +6,7 @@ var boxSDK = require('box-sdk');
 var config = require('../conf/box_config.json');
 var env = config.env;
 var request = require('request');
+var rollbar = require('rollbar');
 
 const THUMB_PREFIX = 'thumb_';
 
@@ -65,9 +66,9 @@ function getItemObject(item, r) {
             if (tag.indexOf('asset_type') === 0) {
                 obj.asset_type = tag.split('-')[1]; // eslint-disable-line camelcase
             } else if (~tag.indexOf(':')) {
-                obj[tag.split(':')[0]] = tag.split(':')[1];
+                obj[tag.split(':')[0].toLowerCase()] = tag.split(':')[1];
             } else {
-                obj[tag] = true; // eslint-disable-line camelcase
+                obj[tag.toLowerCase()] = true; // eslint-disable-line camelcase
             }
         });
     } else {
@@ -91,7 +92,7 @@ function getItemObject(item, r) {
                     {},
                     fullItem,
                     a[itemName],
-                    {thumb: fullItem.src, order: k}
+                    {thumb: fullItem.src, order: fullItem.order || k + item.item_collection.entries.length + 1}
                 );
             }
             return a;
@@ -133,9 +134,9 @@ function getChildItemObject(item) {
             if (tag.indexOf('asset_type') === 0) {
                 obj.asset_type = tag.split('-')[1]; // eslint-disable-line camelcase
             } else if (~tag.indexOf(':')) {
-                obj[tag.split(':')[0]] = tag.split(':')[1];
+                obj[tag.split(':')[0].toLowerCase()] = tag.split(':')[1];
             } else {
-                obj[tag] = true; // eslint-disable-line camelcase
+                obj[tag.toLowerCase()] = true; // eslint-disable-line camelcase
             }
         });
     } else {
@@ -285,6 +286,7 @@ var getAssetInfoById = function (assetId, r) {
             function (fileErr, fileResult) {
                 if (fileResult) {
                     log.info('We have a file');
+                    log.debug(fileResult);
                     getItemObject(fileResult, r);
                 } else {
                     log.info('We have a folder');
@@ -328,6 +330,7 @@ exports.getAsset = function (assetId, r) {
                 connection.getFileInfo(
                     data.media_id + '?fields=shared_link',
                     function (fileErr, fileResult) {
+                        log.error(fileErr);
                         if (fileResult) {
                             log.info('We have a file');
                             if (fileResult.shared_link) {
@@ -335,7 +338,9 @@ exports.getAsset = function (assetId, r) {
                                     url: fileResult.shared_link.download_url
                                 });
                             } else {
-                                r();
+                                // todo throw an exception to avoid caching this asset that is not shared
+                                log.info('Asset has no shared_link');
+                                r({status: 403});
                             }
                         } else {
                             log.info('We have a folder');
@@ -345,8 +350,15 @@ exports.getAsset = function (assetId, r) {
                 );
             });
         } else {
-            r();
+            r({status: 404});
         }
+    }).catch(err => {
+        log.info(err);
+        rollbar.reportMessageWithPayloadData(
+            'Error fetching asset',
+            err
+        );
+        r({status: 500});
     });
 
     if ('' + parseInt(assetId, 10) === assetId) {

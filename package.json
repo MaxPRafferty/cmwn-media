@@ -1,6 +1,6 @@
 {
   "name": "cmwn-media",
-  "version": "1.0.2",
+  "version": "1.0.5",
   "description": "Media Server for Change My World Now",
   "main": "index.js",
   "scripts": {
@@ -19,6 +19,7 @@
   "dependencies": {
     "aws-sdk": "^2.4.0",
     "box-sdk": "0.0.6",
+    "connect-timeout": "^1.7.0",
     "express": "^4.13.4",
     "js2xmlparser": "^1.0.0",
     "lodash": "^4.13.1",

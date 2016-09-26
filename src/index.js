@@ -12,11 +12,32 @@ var service = require('./intelligence_bank_service.js');
 var IntelligenceBankConfig = require('../conf/intelligence_bank_config.json');
 var rollbarKeys = require('../conf/rollbar.json');
 var AWS = require('aws-sdk');
+var timeout = require('connect-timeout');
 
 AWS.config.loadFromPath('./conf/aws.json');
 var docClient = new AWS.DynamoDB.DocumentClient();
+var rollbarOpts = {
+    environment: 'Media'
+};
 
 const CACHE_EXPIRY = 1; //hours
+
+app.use(timeout(45000));
+app.use(logOnTimedout);
+
+app.use(function clientErrorHandler(err, req, res) {
+    rollbar.reportMessageWithPayloadData('Error with request', {request: req, error: err});
+    res.status(500).send({ error: 'Something failed!' });
+});
+
+function logOnTimedout(req, res, next){
+    if (req.timedout) {
+        rollbar.reportMessageWithPayloadData('Got time out on request', req.url);
+        res.status(429).send({ error: 'Something failed!' });
+    }
+
+    next();
+}
 
 // query the asset
 app.get(/^\/a\/{0,1}(.+)?/i, function (req, res) {
@@ -47,7 +68,9 @@ app.get(/^\/a\/{0,1}(.+)?/i, function (req, res) {
     p.then(data => {
         if (data) {
             res.send(data);
+            log.debug(data);
             if (!data.cached) {
+                log.info('Cache Miss');
                 docClient.put({TableName: 'media-cache', Item: {
                     path: IntelligenceBankConfig.host + req.url,
                     expires: Math.floor((new Date).getTime() / 1000) + CACHE_EXPIRY * 360000,
@@ -55,24 +78,32 @@ app.get(/^\/a\/{0,1}(.+)?/i, function (req, res) {
                 }}, function (err) {
                     if (err) {
                         log.error('cache store failed: ' + err);
+                        rollbar.reportMessageWithPayloadData('Error trying to cache asset', {error: err, request: req});
                     }
                 });
+            } else {
+                log.info('Cache Hit');
             }
+
         } else {
-            res.status(data.status || 404).send('Not Found');
+            log.debug('Asset not found');
+            res.status(data && data.status || 404).send();
         }
+    }).catch(err => {
+        rollbar.reportMessageWithPayloadData('Error when trying to serve asset', {error: err, request: req});
+        res.status(500).send({ error: 'Something failed!' });
     });
 
     docClient.get(params, function (err, data) {
         if (err || !Object.keys(data).length) {
-            log.info('Getting asset from service');
+            log.debug('No cache data for', data);
             service.getAssetInfo(assetId, r);
         } else {
             if (data.Item.expires - Math.floor((new Date).getTime() / 1000) < 0 ) {
-                log.info('Cache Expired. Getting asset from service');
+                log.debug('Cache expired for', data);
                 service.getAssetInfo(assetId, r);
             } else {
-                log.info('Getting asset from cache');
+                log.debug('Cache Hit', data);
                 data.Item.data.cached = true;
                 r(data.Item.data);
             }
@@ -103,7 +134,10 @@ app.get('/f/*', function (req, res) {
         };
     });
 
-    p.then(data => {
+    p.then((data, err, err2) => {
+        log.debug(data);
+        log.debug(err);
+        log.debug(err2);
         if (data && data.url) {
             res.contentType('image/png');
             request
@@ -126,8 +160,11 @@ app.get('/f/*', function (req, res) {
                     return response;
                 }).pipe(res);
         } else {
-            res.status(data.status || 404).send('Not Found');
+            res.status(data && data.status || 404).send();
         }
+    }).catch(err => {
+        rollbar.reportMessageWithPayloadData('Error when trying to serve asset', {error: err, request: req});
+        res.status(500).send({ error: 'Something failed!' });
     });
 
     service.getAsset(assetId + query, r);
@@ -140,10 +177,10 @@ app.get('/p', function (req, res) {
     res.status(200).send('LGTM');
 });
 
-rollbar.init({environment: 'Media'});
-rollbar.handleUncaughtExceptions(rollbarKeys.token);
-rollbar.handleUnhandledRejections(rollbarKeys.token);
-app.use(rollbar.errorHandler(rollbarKeys.token));
+rollbar.init(rollbarKeys.token, rollbarOpts);
+rollbar.handleUncaughtExceptions(rollbarKeys.token, rollbarOpts);
+rollbar.handleUnhandledRejections(rollbarKeys.token, rollbarOpts);
+app.use(rollbar.errorHandler(rollbarKeys.token, rollbarOpts));
 
 app.listen(3000, function () {
     //service.init(storage);
