@@ -150,12 +150,12 @@ class IntelligenceBank {
                         resolve(data);//no need to transform, happens in getFolderByPath
                     })
                     .catch(function (err_) {
-                        self.log.error(err_);
+                        log.error(err_);
                         reject(err_);
                     });
             } else {
                 err = 'No ID or path provided. Folder cannot be retrieved. Options passed: ' + JSON.stringify(options);
-                self.log.error(err);
+                log.error(err);
                 reject(err);
             }
         } catch(err_) {
@@ -215,7 +215,7 @@ class IntelligenceBank {
                 });
             })
             .catch(function (err) {
-                this.log.error(err);
+                log.error(err);
                 reject(err);
             });
         return folder;
@@ -267,12 +267,12 @@ class IntelligenceBank {
                         resolve(data);//no need to transform, happens in getAssetsFromTreee
                     })
                     .catch(function (err_) {
-                        self.log.error(err_);
+                        log.error(err_);
                         reject(err_);
                     });
             } else {
                 err = 'No ID or path provided. Asset cannot be retrieved. Options passed: ' + JSON.stringify(options);
-                self.log.error(err);
+                log.error(err);
                 reject(err);
             }
         } catch(err_) {
@@ -342,7 +342,7 @@ class IntelligenceBank {
                 });
             })
             .catch(function (err) {
-                this.log.error(err);
+                log.error(err);
                 reject(err);
             });
         return folder;

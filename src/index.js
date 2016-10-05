@@ -25,9 +25,13 @@ const CACHE_EXPIRY = 1; //hours
 app.use(timeout(45000));
 app.use(logOnTimedout);
 
-app.use(function clientErrorHandler(err, req, res) {
+app.use(function clientErrorHandler(err, req, res, next) {
     rollbar.reportMessageWithPayloadData('Error with request', {request: req, error: err});
-    res.status(500).send({ error: 'Something failed!' });
+    if (res.status) {
+        res.status(500).send({ error: 'Something failed!' });
+    } else {
+        next();
+    }
 });
 
 function logOnTimedout(req, res, next){
