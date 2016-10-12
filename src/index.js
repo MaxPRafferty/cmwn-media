@@ -6,8 +6,6 @@ var app = express();
 var request = require('request');
 var crypto = require('crypto');
 var mime = require('mime-types');
-//var service = require('./boxService.js');
-//var storage = require('./box_storage.js');
 var service = require('./intelligence_bank_service.js');
 var IntelligenceBankConfig = require('../conf/intelligence_bank_config.json');
 var rollbarKeys = require('../conf/rollbar.json');
@@ -47,8 +45,9 @@ function logOnTimedout(req, res, next){
 app.get(/^\/a\/{0,1}(.+)?/i, function (req, res) {
     'use strict';
     var assetId;
-    var r;
-    var p;
+    var assetResolve;
+    var assetReject;
+    var assetPromise;
 
     var params = {
         TableName: 'media-cache',
@@ -63,13 +62,17 @@ app.get(/^\/a\/{0,1}(.+)?/i, function (req, res) {
     assetId = req.params[0] || '0';
     log.debug('Asset Id: ' + assetId);
 
-    p = new Promise(resolve => {
-        r = data => {
+    assetPromise = new Promise((resolve, reject) => {
+        assetResolve = data => {
             resolve(data);
+        };
+
+        assetReject = data => {
+            reject(data);
         };
     });
 
-    p.then(data => {
+    assetPromise.then(data => {
         if (data) {
             res.send(data);
             log.debug(data);
@@ -101,15 +104,15 @@ app.get(/^\/a\/{0,1}(.+)?/i, function (req, res) {
     docClient.get(params, function (err, data) {
         if (err || !Object.keys(data).length) {
             log.debug('No cache data for', data);
-            service.getAssetInfo(assetId, r);
+            service.getAssetInfo(assetId, assetResolve, assetReject);
         } else {
             if (data.Item.expires - Math.floor((new Date).getTime() / 1000) < 0 ) {
                 log.debug('Cache expired for', data);
-                service.getAssetInfo(assetId, r);
+                service.getAssetInfo(assetId, assetResolve, assetReject);
             } else {
                 log.debug('Cache Hit', data);
                 data.Item.data.cached = true;
-                r(data.Item.data);
+                assetResolve(data.Item.data);
             }
         }
     });

@@ -13,94 +13,128 @@ const IB_PATHS = {
 };
 
 const IB_ERRORS = {
-    SILLY: 'A server error ocurred',
-    LOGIN: 'Invalid user or password'
+    SILLY: 'A server error occurred',
+    LOGIN: 'Invalid user name or password. Please try again.',
+    BAD_PLATFORM: 'Invalid user or password'
 };
 
 class IntelligenceBank {
     constructor(options) {
+        this.userName = options.userName || null;
+        this.password = options.password || null;
+        this.platformUrl = options.platformUrl || null;
+
+        if (this.userName === null) {
+            throw 'Invalid Username passed in options';
+        }
+
+        if (this.password === null) {
+            throw 'Invalid Password passed in options';
+        }
+
+        if (this.platformUrl === null) {
+            throw 'Invalid platform url passed in options';
+        }
+
+        this.loginExpires = 0;
+        this.lastLogin = null;
         this.apikey = '';
         this.useruuid = '';
         this.baseUrl = options.baseUrl;
-        this.request = httprequest.defaults({
+        this.httpRequest = httprequest.defaults({
             json: true,
-            /* MPR: I do not know why this cookie must be set. But this cookie must be set. */
-            headers: {
-                Cookie: options.trackingCookie
-            }
+            jar: true
         });
         this.transformFolder = options.transformFolder;
         this.transformAsset = options.transformAsset;
     }
+
+    login(resolve, reject) {
+        let self = this;
+        let loginOptions = {
+            'url': IB_API_ENDPOINT + IB_PATHS.LOGIN,
+            'form': {
+                'p70': this.userName,
+                'p80': this.password,
+                'p90': this.platformUrl
+            }
+        };
+
+        this.httpRequest.post(loginOptions, function (err, response, data) {
+            if (err) {
+                log.error(err);
+                reject({status: 500, message: 'Internal server error [0x1F4]'});
+                return;
+            }
+
+            if ([200].indexOf(response.statusCode) === -1) {
+                log.error('Invalid response code', response);
+                reject({status: 500, message: 'Internal server error [0x193]'});
+                return;
+            }
+
+            if (data.message === IB_ERRORS.LOGIN) {
+                log.error('Login credentials');
+                reject({status: 500, message: 'Internal server error [0x191]'});
+                return;
+            }
+
+            if (data.message === IB_ERRORS.BAD_PLATFORM) {
+                log.error('Invalid platform specified');
+                reject({status: 500, message: 'Internal server error [0x1F1]'});
+                return;
+            }
+
+            self.apiKey = data.apikey;
+            self.useruuid = data.useruuid;
+            log.info('Login successful');
+            resolve();
+        });
+    }
+
     makeHTTPCall(options) {
         var self = this;
         return new Promise(function (resolve, reject) {
-            log.info('making http request to ' + options.uri);
-            try {
-                self.request(options, function (err, response, data) {
-                    if (err) {
-                        log.error(err);
-                        reject(err);
-                    } else if (data.message === IB_ERRORS.SILLY) {
-                        reject({message: 'server refused request, reason not provided. 404 assumed.', status: 404});
-                    } else if (data.message === IB_ERRORS.LOGIN) {
-                        reject({status: 401, message: 'Invalid Login. User not authorized'});
-                    } else {
+            self.login(function () {
+                options.qs = options.qs || {};
+                options.qs.p10 = self.apiKey;
+                options.qs.p20 = self.useruuid;
+                try {
+                    self.httpRequest.get(options, function (err, response, data) {
+                        if (err) {
+                            log.error(err);
+                            reject({status: 500, message: 'Internal server error [0x1F5]'});
+                            return;
+                        }
+
+                        if ([200].indexOf(response.statusCode) === -1) {
+                            log.error('Invalid response code', response);
+                            reject({status: 500, message: 'Internal server error [0x1F2]'});
+                            return;
+                        }
+
+                        if (data.message === IB_ERRORS.SILLY) {
+                            log.error('', data);
+                            reject({status: 404, message: 'Not Found'});
+                            return;
+                        }
+
+                        if (data.message === IB_ERRORS.LOGIN) {
+                            reject({status: 401, message: 'Invalid Login. User not authorized'});
+                            return;
+                        }
+
                         log.info(data);
-                        resolve(data);
-                    }
-                });
-            } catch(err) {
-                log.error(err);
-                reject(err);
-            }
+                        resolve(data.response);
+                    });
+                } catch(err) {
+                    log.error(err);
+                    reject(err);
+                }
+            }, reject);
         });
     }
-    connect(options) {
-        var self = this;
-        var defaultOptions = {
-            onConnect: _.identity,
-            ownUrl: 'https://media.changemyworldnow.com'
-        };
-        var formData = {
-            p70: options.username,
-            p80: options.password,
-            p90: options.instanceUrl
-        };
-        log.info('logging in as ' + JSON.stringify(options.username || 'cached user') + ' at ' + options.ownUrl);
-        var requestParams = {
-            method: 'POST',
-            uri: self.baseUrl + IB_PATHS.LOGIN,
-            form: formData
-        };
-        var resourceUrl;
 
-        options = _.defaults(options, defaultOptions);
-
-        self.ownUrl = options.ownUrl;
-        resourceUrl = self.ownUrl + 'f/';
-        self.transformAsset = self.transformAsset.bind(null, resourceUrl);
-        self.transformFolder = self.transformFolder.bind(null, resourceUrl);
-
-        if (options.apikey != null) {
-            self.apikey = options.apikey;
-            self.useruuid = options.useruuid;
-            log.info('connection success (cache). setting keys');
-            return Promise.resolve(options);
-        }
-
-        return self.makeHTTPCall(requestParams)
-            .then(function (data) {
-                options.onConnect(data);
-                self.apikey = data.apikey;
-                self.useruuid = data.useruuid;
-                log.info('connection success. setting keys');
-                return Promise.resolve(data);
-            })
-            .catch(function (err) {
-                log.error(err);
-            });
-    }
     getFolderInfo(options) {
         var self = this;
         var resolve;
@@ -110,10 +144,8 @@ class IntelligenceBank {
             resolve = resolve_;
             reject = reject_;
         });
-        var qs = {
-            p10: self.apikey,
-            p20: self.useruuid
-        };
+
+        var qs = {};
         log.info('getting folder using query: ' + JSON.stringify(options));
         //very simple. If an id is provided, retrieve it directly. If a path is provided, walk the tree until it is found
         try {
@@ -131,14 +163,14 @@ class IntelligenceBank {
                             log.info('got folder data for folder ' + options.id);
 
                             if (!data.response) {
-                                log.warn('server returned no items');
-                                reject(data);
+                                log.warning('No response for folder information');
+                                reject({status: 404, message: 'Not Found'});
                             } else {
                                 resolve(self.transformFolder(options.id, data.response));
                             }
                         } catch(err_) {
                             log.error('bad data recieved from server: ' + err_);
-                            reject(err_);
+                            reject({status: 500, message: 'Internal server error [0x1F2]'});
                         }
                     })
                     .catch(function (err_) {
@@ -184,8 +216,6 @@ class IntelligenceBank {
         var options = {
             uri: this.baseUrl + IB_PATHS.RESOURCE,
             qs: {
-                p10: this.apikey,
-                p20: this.useruuid,
                 folderuuid: currentFolderId
             }
         };
@@ -238,8 +268,6 @@ class IntelligenceBank {
                 self.makeHTTPCall({
                     uri: self.baseUrl + IB_PATHS.SEARCH,
                     qs: {
-                        p10: self.apikey,
-                        p20: self.useruuid,
                         searchterm: options.id
                     }
                 })
@@ -248,7 +276,7 @@ class IntelligenceBank {
                             log.info('got asset data for asset ' + options.id);
 
                             if (!data.doc || data.numFound !== '1') {
-                                log.warn('server returned no items');
+                                log.warning('No response for server information');
                                 reject(data);
                             } else {
                                 resolve(self.transformAsset(data.doc[0]));
@@ -304,8 +332,6 @@ class IntelligenceBank {
         var options = {
             uri: this.baseUrl + IB_PATHS.RESOURCE,
             qs: {
-                p10: this.apikey,
-                p20: this.useruuid,
                 folderuuid: currentFolderId
             }
         };

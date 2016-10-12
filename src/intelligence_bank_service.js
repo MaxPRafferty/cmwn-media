@@ -2,12 +2,7 @@ var exports = module.exports = {};
 var _ = require('lodash');
 var Log = require('log');
 var log = new Log('info');
-//var Log = require('log');
-//var log = new Log();
 var config = require('../conf/intelligence_bank_config.json');
-//var config = require('../conf/config.json');
-//var env = config.env;
-var anyFirst = require('promise-any-first');
 
 var AWS = require('aws-sdk');
 AWS.config.loadFromPath('./conf/aws.json');
@@ -72,6 +67,8 @@ var transformResourceToExpected = function (resourceLocationUrl, data) {
 
     //DynamoDB is apparently out of their damn mind and doesn't allow empty
     // strings in their database.
+    // MAX - If you pay to see my nomad PHP talk Tomorrow,
+    // I will go over why dynamo cannot have empty values - MC
     transformed = _.reduce(transformed, function (a, v, k) {
         if (v !== '') {
             a[k] = v;
@@ -85,10 +82,12 @@ var transformResourceToExpected = function (resourceLocationUrl, data) {
 
 var ibClient = new IntelligenceBank({
     baseUrl: IB_API_URL,
+    userName: config.userName,
+    password: config.password,
+    platformUrl: config.platformUrl,
     //log: Log,
     transformFolder: transformFolderToExpected,
     transformAsset: transformResourceToExpected,
-    trackingCookie: config.trackingCookie
 });
 
 
@@ -137,21 +136,30 @@ exports.init = function () {
  * @param assetId (string) the id of the file or folder to find
  * @param r (function) the function the calls the resolve for the Promise
  */
-exports.getAssetInfo = function (assetId, r) {
+exports.getAssetInfo = function (assetId, resolve, reject) {
     var requestData = {};
     if (assetId != null && assetId !== 0 && assetId !== '0' && assetId !== '') {
         requestData.id = assetId;
     }
     //we do not know at this point if we have a folder or an asset. The only way to know
     //is to check both. One call will always fail, one will always succeed.
-    anyFirst([ibClient.getAssetInfo(requestData), ibClient.getFolderInfo(requestData)])
-        .then(function (data_) {
-            data_.id = data_.media_id || data_.uuid;
-            r(data_);
-        })
-        .catch(function (err_) {
-            log.error('Could not retrieve asset ' + err_);
-            r('ERROR: 500. Details: ' + err_);
+
+    var success = function (data_) {
+        log.info('here 8000');
+        data_.id = data_.media_id || data_.uuid;
+        resolve(data_);
+    };
+
+    ibClient.getAssetInfo(requestData)
+        .then(success)
+        .catch(function (assetError) {
+            log.error('error when requesting asset information', assetError);
+            ibClient.getFolderInfo(requestData)
+                .then(success)
+                .catch(function (folderError) {
+                    log.error('error when requesting folder information', folderError);
+                    reject('ERROR: 500. Details: ' + folderError);
+                });
         });
 };
 
