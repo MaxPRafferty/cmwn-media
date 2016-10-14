@@ -20,11 +20,11 @@ const IB_ERRORS = {
 
 class IntelligenceBank {
     constructor(options) {
-        this.userName = options.userName || null;
+        this.username = options.username || null;
         this.password = options.password || null;
         this.platformUrl = options.platformUrl || null;
 
-        if (this.userName === null) {
+        if (this.username === null) {
             throw 'Invalid Username passed in options';
         }
 
@@ -38,9 +38,11 @@ class IntelligenceBank {
 
         this.loginExpires = 0;
         this.lastLogin = null;
-        this.apikey = '';
+        this.apiKey = '';
         this.useruuid = '';
+        this.tracking = '';
         this.baseUrl = options.baseUrl;
+        this.onConnect = _.identity;
         this.httpRequest = httprequest.defaults({
             json: true,
             jar: true
@@ -49,90 +51,164 @@ class IntelligenceBank {
         this.transformAsset = options.transformAsset;
     }
 
-    login(resolve, reject) {
+    connect(options) {
+        var self = this;
+        var resourceUrl;
+        var jar;
+        var defaultOptions = {
+            onConnect: _.identity,
+            ownUrl: 'https://media.changemyworldnow.com'
+        };
+
+        options = _.defaults(options, defaultOptions);
+
+        self.ownUrl = options.ownUrl || self.ownUrl;
+        resourceUrl = self.ownUrl + 'f/';
+        //bind transform methods to specified resource url
+        self.transformAsset = self.transformAsset.bind(null, resourceUrl);
+        self.transformFolder = self.transformFolder.bind(null, resourceUrl);
+        self.onConnect = options.onConnect || self.onConnect;
+
+        log.info('logging in as ' + JSON.stringify(options.username || 'cached user') + ' at ' + options.ownUrl);
+
+        if (options.username != null) {
+            self.username = options.username;
+            self.password = options.password;
+            return self.login()
+                .then(loginDetails => {
+                    jar = self.httpRequest.jar();
+                    self.tracking = loginDetails.tracking;
+                    self.apiKey = loginDetails.apiKey;
+                    self.useruuid = loginDetails.useruuid;
+                    jar.setCookie(self.tracking, IB_API_ENDPOINT);
+                    self.httpRequest = httprequest.defaults({
+                        json: true,
+                        jar: jar /* MPR, 10/14/16: meesa sorry for this joke */
+                    });
+                })
+                .catch(err => {
+                    log.error('could not connect: ' + err);
+                });
+        } else if (options.apiKey != null) {
+            self.apiKey = options.apiKey;
+            self.useruuid = options.useruuid;
+            self.tracking = options.tracking;
+            jar = self.httpRequest.jar();
+            jar.setCookie(options.tracking, IB_API_ENDPOINT);
+            self.httpRequest = httprequest.defaults({
+                json: true,
+                jar: jar
+            });
+            log.info('connection success (cache). setting keys');
+            return Promise.resolve(options);
+        } else {
+            log.error('no login info provided and no cache exists. Cannot proceed.');
+        }
+    }
+
+    login() {
         let self = this;
         let loginOptions = {
             'url': IB_API_ENDPOINT + IB_PATHS.LOGIN,
             'form': {
-                'p70': this.userName,
-                'p80': this.password,
-                'p90': this.platformUrl
+                'p70': self.username,
+                'p80': self.password,
+                'p90': self.platformUrl
             }
         };
 
-        this.httpRequest.post(loginOptions, function (err, response, data) {
-            if (err) {
-                log.error(err);
-                reject({status: 500, message: 'Internal server error [0x1F4]'});
-                return;
-            }
+        return new Promise((resolve, reject) => {
+            var result = {};
+            var jar = self.httpRequest.jar();
+            loginOptions.jar = jar;
+            self.httpRequest.post(loginOptions, function (err, response, data) {
+                if (err) {
+                    log.error(err);
+                    reject({status: 500, message: 'Internal server error [0x1F4]'});
+                    return;
+                }
 
-            if ([200].indexOf(response.statusCode) === -1) {
-                log.error('Invalid response code', response);
-                reject({status: 500, message: 'Internal server error [0x193]'});
-                return;
-            }
+                if ([200].indexOf(response.statusCode) === -1) {
+                    log.error('Invalid response code', response);
+                    reject({status: 500, message: 'Internal server error [0x193]'});
+                    return;
+                }
 
-            if (data.message === IB_ERRORS.LOGIN) {
-                log.error('Login credentials');
-                reject({status: 500, message: 'Internal server error [0x191]'});
-                return;
-            }
+                if (data.message === IB_ERRORS.LOGIN) {
+                    log.error('Login credentials');
+                    reject({status: 500, message: 'Internal server error [0x191]'});
+                    return;
+                }
 
-            if (data.message === IB_ERRORS.BAD_PLATFORM) {
-                log.error('Invalid platform specified');
-                reject({status: 500, message: 'Internal server error [0x1F1]'});
-                return;
-            }
+                if (data.message === IB_ERRORS.BAD_PLATFORM) {
+                    log.error('Invalid platform specified');
+                    reject({status: 500, message: 'Internal server error [0x1F1]'});
+                    return;
+                }
 
-            self.apiKey = data.apikey;
-            self.useruuid = data.useruuid;
-            log.info('Login successful');
-            resolve();
+                result.apiKey = data.apikey; //second key is intentionally lowercase
+                result.useruuid = data.useruuid;
+                result.tracking = jar.getCookieString(loginOptions.url);
+                log.info('Login successful');
+                self.onConnect(result);
+                resolve(result);
+            });
         });
     }
 
     makeHTTPCall(options) {
         var self = this;
+        var loginPromise = options.forceLogin ?
+                this.login() :
+                Promise.resolve({
+                    apiKey: self.apiKey,
+                    useruuid: self.apiKey,
+                    tracking: self.tracking
+                });
+
         return new Promise(function (resolve, reject) {
-            self.login(function () {
+            loginPromise.then(function (loginDetails) {
+                log.info('connecting as ' + JSON.stringify(loginDetails));
                 options.qs = options.qs || {};
                 options.qs.p10 = self.apiKey;
                 options.qs.p20 = self.useruuid;
+                options.cookie = self.tracking;
                 try {
                     self.httpRequest.get(options, function (err, response, data) {
                         if (err) {
                             log.error(err);
-                            reject({status: 500, message: 'Internal server error [0x1F5]'});
-                            return;
+                            throw ({status: 500, message: 'Internal server error [0x1F5]'});
                         }
 
                         if ([200].indexOf(response.statusCode) === -1) {
                             log.error('Invalid response code', response);
-                            reject({status: 500, message: 'Internal server error [0x1F2]'});
-                            return;
+                            throw ({status: 500, message: 'Internal server error [0x1F2]'});
                         }
 
                         if (data.message === IB_ERRORS.SILLY) {
                             log.error('', data);
-                            reject({status: 404, message: 'Not Found'});
-                            return;
+                            throw ({status: 404, message: 'Not Found'});
                         }
 
                         if (data.message === IB_ERRORS.LOGIN) {
-                            reject({status: 401, message: 'Invalid Login. User not authorized'});
-                            return;
+                            throw ({status: 401, message: 'Invalid Login. User not authorized'});
                         }
 
-                        log.info(data);
+                        log.info('got data: ' + JSON.stringify(data));
                         resolve(data.response);
                     });
                 } catch(err) {
-                    log.error(err);
-                    reject(err);
+                    if (!options.forceLogin) {
+                        log.info('Request failed for reason: ' + err + '. Cached login information expired. Retrying with explicit login');
+                        options.forceLogin = true;
+                        this.makeHTTPCall(options).then(result => resolve(result)).catch(err_ => reject(err_));
+                    } else {
+                        log.error(err);
+                        reject(err);
+                    }
                 }
-            }, reject);
-        });
+            }
+        ); });
     }
 
     getFolderInfo(options) {
@@ -162,11 +238,14 @@ class IntelligenceBank {
                         try {
                             log.info('got folder data for folder ' + options.id);
 
-                            if (!data.response) {
+                            if (data && data.folder) {
+                                // evidently data.response doesnt exist sometimes so... k.
+                                resolve(self.transformFolder(options.id, data));
+                            } else if (data && data.response) {
+                                resolve(self.transformFolder(options.id, data.response));
+                            } else {
                                 log.warning('No response for folder information');
                                 reject({status: 404, message: 'Not Found'});
-                            } else {
-                                resolve(self.transformFolder(options.id, data.response));
                             }
                         } catch(err_) {
                             log.error('bad data recieved from server: ' + err_);
@@ -260,7 +339,7 @@ class IntelligenceBank {
             resolve = resolve_;
             reject = reject_;
         });
-        log.info('getting asset with apikey: ' + self.apikey);
+        log.info('getting asset with apiKey: ' + self.apiKey);
         //very simple. If an id is provided, retrieve it directly. If a path is provided, walk the tree until it is found
         try {
             if (options.id) {
@@ -376,11 +455,51 @@ class IntelligenceBank {
     getAssetUrl(assetId) {
         var resourceUrl =
             IB_API_ENDPOINT + IB_PATHS.RESOURCE +
-            '?p10=' + this.apikey +
+            '?p10=' + this.apiKey +
             '&p20=' + this.useruuid +
             '&fileuuid=' + assetId.replace('?', '&');
         log.info('trying to display image from ' + resourceUrl);
         return resourceUrl;
+    }
+    getTracking() {
+        return this.tracking;
+    }
+    getAsset(options = {}, assetId = 0) {
+        var self = this;
+        var loginPromise = options.forceLogin ?
+                this.login() :
+                Promise.resolve({
+                    apiKey: self.apiKey,
+                    useruuid: self.apiKey,
+                    tracking: self.tracking
+                });
+
+        return new Promise(function (resolve, reject) {
+            loginPromise.then(function (loginDetails) {
+                self.onConnect(loginDetails);
+                options.uri = this.getAssetUrl(assetId);
+                try {
+                    options.cookie = self.tracking;
+                    self.httpRequest.get(options, function (err, response, data) {
+                        if (err) {
+                            log.error(err);
+                            throw ({status: 500, message: 'Internal server error [0x1FQ]'});
+                        }
+
+                        resolve(data);
+                    });
+                } catch(err) {
+                    if (!options.forceLogin) {
+                        log.info('Request failed for reason: ' + err + '. Cached login information expired. Retrying with explicit login');
+                        options.forceLogin = true;
+                        this.makeHTTPCall(options).then(result => resolve(result)).catch(err_ => reject(err_));
+                    } else {
+                        log.error(err);
+                        reject(err);
+                    }
+                }
+            }
+        ); });
     }
 }
 

@@ -14,8 +14,9 @@ const IB_API_URL = 'https://apius.intelligencebank.com';
 
 var transformFolderToExpected = function (resourceLocationUrl, folderId, data) {
     var transformed = data;
-    transformed.items = [];
+    transformed.items = [].concat(transformed.folder) || [];
     delete transformed.folderuuid;
+    delete transformed.folder;
     /* eslint-disable camelcase */
     transformed.asset_type = 'folder';
     transformed.media_id = folderId;
@@ -82,9 +83,10 @@ var transformResourceToExpected = function (resourceLocationUrl, data) {
 
 var ibClient = new IntelligenceBank({
     baseUrl: IB_API_URL,
-    userName: config.userName,
+    username: config.username,
     password: config.password,
     platformUrl: config.platformUrl,
+    ownUrl: config.host,
     //log: Log,
     transformFolder: transformFolderToExpected,
     transformAsset: transformResourceToExpected,
@@ -97,7 +99,7 @@ exports.init = function () {
     docClient.get({
         TableName: 'intelligence_bank_keys',
         Key: {
-            'key_name': 'apikey'
+            'key_name': 'apiKey'
         }
     }, function (err, data) {
         if (err || !Object.keys(data).length) {
@@ -105,17 +107,19 @@ exports.init = function () {
             ibClient.connect({
                 username: config.username,
                 password: config.password,
-                instanceUrl: config.instanceUrl,
+                platformUrl: config.platformUrl,
                 ownUrl: config.host,
                 onConnect: function (data_) {
+                    log.info('success, storing: ' + JSON.stringify(data_));
                     //store in dynamo
                     docClient.put({TableName: 'intelligence_bank_keys', Item: {
-                        'key_name': 'apikey',
+                        'key_name': 'apiKey',
                         useruuid: data_.useruuid,
-                        apikey: data_.apikey
+                        apiKey: data_.apiKey,
+                        tracking: data_.tracking
                     }}, function (err_) {
-                        if (err_) {
-                            log.warn('cache store failed: ' + err_);
+                        if (err_ != null) {
+                            log.warn('key cache store failed: ' + err_);
                         }
                     });
                 }
@@ -123,9 +127,10 @@ exports.init = function () {
         } else {
             log.info('retrieving stored key');
             ibClient.connect({
-                apikey: data.Item.apikey,
+                apiKey: data.Item.apiKey,
                 useruuid: data.Item.useruuid,
-                instanceUrl: config.instanceUrl,
+                tracking: data.Item.tracking,
+                platformUrl: config.platformUrl,
                 ownUrl: config.host,
             });
         }
@@ -169,5 +174,5 @@ exports.getAssetInfo = function (assetId, resolve, reject) {
  */
 exports.getAsset = function (assetId, r) {
     'use strict';
-    r({url: ibClient.getAssetUrl(assetId)});
+    r({url: ibClient.getAssetUrl(assetId), tracking: ibClient.getTracking()});
 };

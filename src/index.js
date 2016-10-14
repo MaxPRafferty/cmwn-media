@@ -147,10 +147,11 @@ app.get('/f/*', function (req, res) {
         log.debug(err2);
         if (data && data.url) {
             res.contentType('image/png');
+            console.log('making request ' + data.url + ' with cookie ' + data.tracking);
             request
                 .get({
                     url: data.url,
-                    headers: { Cookie: IntelligenceBankConfig.trackingCookie }
+                    headers: { Cookie: data.tracking }
                 })
                 .on('response', function (response) {
                     var extension;
