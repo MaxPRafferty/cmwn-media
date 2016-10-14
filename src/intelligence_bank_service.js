@@ -10,6 +10,19 @@ var docClient = new AWS.DynamoDB.DocumentClient();
 
 var IntelligenceBank = require('./intelligence_bank_client.js');
 
+// MPR, 10/14/16: I hate this dumb expensive transform so much. ![](http://i.imgur.com/vDvVOWh.gif)
+var stripEmptyValuesDeep = function (obj) {
+    return _.reduce(obj, function (a, v, k) {
+        if (v !== '') {
+            a[k] = v;
+            if (_.isObject(v)) {
+                a[k] = stripEmptyValuesDeep(v);
+            }
+        }
+        return a;
+    }, {});
+};
+
 const IB_API_URL = 'https://apius.intelligencebank.com';
 
 var transformFolderToExpected = function (resourceLocationUrl, folderId, data) {
@@ -32,6 +45,7 @@ var transformFolderToExpected = function (resourceLocationUrl, folderId, data) {
         return transformFolderToExpected(resourceLocationUrl, item.folderuuid, item);
     }));
     delete transformed.folder;
+    transformed = stripEmptyValuesDeep(transformed);
     return transformed;
 };
 
@@ -68,12 +82,7 @@ var transformResourceToExpected = function (resourceLocationUrl, data) {
     // strings in their database.
     // MAX - If you pay to see my nomad PHP talk Tomorrow,
     // I will go over why dynamo cannot have empty values - MC
-    transformed = _.reduce(transformed, function (a, v, k) {
-        if (v !== '') {
-            a[k] = v;
-        }
-        return a;
-    }, {});
+    transformed = stripEmptyValuesDeep(transformed);
     delete transformed.versions;
 
     return transformed;
