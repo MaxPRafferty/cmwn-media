@@ -201,7 +201,7 @@ class IntelligenceBank {
                     if (!options.forceLogin) {
                         log.info('Request failed for reason: ' + err + '. Cached login information expired. Retrying with explicit login');
                         options.forceLogin = true;
-                        this.makeHTTPCall(options).then(result => resolve(result)).catch(err_ => reject(err_));
+                        self.makeHTTPCall(options).then(result => resolve(result)).catch(err_ => reject(err_));
                     } else {
                         log.error(err);
                         reject(err);
