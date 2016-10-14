@@ -39,15 +39,13 @@ var transformResourceToExpected = function (resourceLocationUrl, data) {
     var transformed = data;
     log.info('Got resource: ' + resourceLocationUrl);
     transformed.type = 'file';
-    //no hash currently being returned. hmmmmmm
     transformed.check = {
-        type: null,
-        value: null
+        type: transformed.filehash,
+        value: 'md5'
     };
+    delete transformed.filehash;
     /* eslint-disable camelcase */
     transformed.media_id = data.resourceuuid || data.uuid;
-    //nor mime type. double hmmmm
-    transformed.mime_type = null;
     /* eslint-enable camelcase */
     delete transformed.resourceuuid;
     transformed.name = data.title;
