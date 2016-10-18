@@ -19,7 +19,7 @@ const IB_ERRORS = {
 };
 
 class IntelligenceBank {
-    constructor(options) {
+    constructor(options = {}) {
         this.username = options.username || null;
         this.password = options.password || null;
         this.platformUrl = options.platformUrl || null;
@@ -128,7 +128,7 @@ class IntelligenceBank {
                     return;
                 }
 
-                if ([200].indexOf(response.statusCode) === -1) {
+                if (response.statusCode.indexOf('2') === 0) {
                     log.error('Invalid response code', response);
                     reject({status: 500, message: 'Internal server error [0x193]'});
                     return;
@@ -180,7 +180,7 @@ class IntelligenceBank {
                             throw ({status: 500, message: 'Internal server error [0x1F5]'});
                         }
 
-                        if ([200].indexOf(response.statusCode) === -1) {
+                        if (response.statusCode.indexOf('2') === 0) {
                             log.error('Invalid response code', response);
                             throw ({status: 500, message: 'Internal server error [0x1F2]'});
                         }
@@ -194,7 +194,7 @@ class IntelligenceBank {
                             throw ({status: 401, message: 'Invalid Login. User not authorized'});
                         }
 
-                        log.info('got data: ' + JSON.stringify(data));
+                        log.info('got data');
                         resolve(data.response);
                     });
                 } catch(err) {
@@ -433,7 +433,7 @@ class IntelligenceBank {
                 _.each(data.response.folder, function (item) {
                     //this side effect transformation is particularly egregious, were not even using the
                     //output! Eat your heart out, Church.
-                    this.transformFolder(item);
+                    //this.transformFolder(item);
                     this.getAssetFromTree(targetOptions, currentPath + item.name, item.folderuuid)
                         .then(function (data_) {
                             resolve(data_); //again, no need to double transform

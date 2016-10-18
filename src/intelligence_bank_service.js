@@ -15,7 +15,7 @@ var stripEmptyValuesDeep = function (obj) {
     return _.reduce(obj, function (a, v, k) {
         if (v !== '') {
             a[k] = v;
-            if (_.isObject(v)) {
+            if (_.isObject(v) && !_.isArray(v)) {
                 a[k] = stripEmptyValuesDeep(v);
             }
         }
@@ -27,25 +27,37 @@ const IB_API_URL = 'https://apius.intelligencebank.com';
 
 var transformFolderToExpected = function (resourceLocationUrl, folderId, data) {
     var transformed = data;
-    transformed.items = [].concat(transformed.folder) || [];
-    delete transformed.folderuuid;
-    delete transformed.folder;
+    transformed.items = [];
     /* eslint-disable camelcase */
     transformed.asset_type = 'folder';
-    transformed.media_id = folderId;
+    transformed.media_id = transformed.folderuuid;
     /* eslint-enable camelcase */
     transformed.type = 'folder';
+    transformed.order = transformed.sortorder;
     transformed.created = data.createdtime;
-    delete transformed.createdtime;
     transformed.items = transformed.items.concat(_.map(data.resource || [], function (item) {
         return transformResourceToExpected(resourceLocationUrl, item);
     }));
-    delete transformed.resource;
-    transformed.items = transformed.items.concat(_.map(data.folder, function (item) {
-        return transformFolderToExpected(resourceLocationUrl, item.folderuuid, item);
+    transformed.items = transformed.items.concat(_.map(transformed.folder, function (item) {
+        var transform = transformFolderToExpected(resourceLocationUrl, item.folderuuid, item);
+        return transform;
     }));
-    delete transformed.folder;
+
+    transformed.items = _.reduce(transformed.items, (a, v) => {
+        console.log('3333333333333333');
+        a.push(v);
+        return a;
+    }, []);
+
     transformed = stripEmptyValuesDeep(transformed);
+
+    delete transformed.createdtime;
+    delete transformed.sortorder;
+    delete transformed.resource;
+    delete transformed.folder;
+    delete transformed.folderuuid;
+    delete transformed.folder;
+
     return transformed;
 };
 
