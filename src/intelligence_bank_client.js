@@ -63,7 +63,7 @@ class IntelligenceBank {
         options = _.defaults(options, defaultOptions);
 
         self.ownUrl = options.ownUrl || self.ownUrl;
-        resourceUrl = self.ownUrl + 'f/';
+        resourceUrl = 'f/';
         //bind transform methods to specified resource url
         self.transformAsset = self.transformAsset.bind(null, resourceUrl);
         self.transformFolder = self.transformFolder.bind(null, resourceUrl);

@@ -44,7 +44,6 @@ var transformFolderToExpected = function (resourceLocationUrl, folderId, data) {
     }));
 
     transformed.items = _.reduce(transformed.items, (a, v) => {
-        console.log('3333333333333333');
         a.push(v);
         return a;
     }, []);

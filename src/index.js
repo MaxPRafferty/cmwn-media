@@ -1,3 +1,4 @@
+var _ = require('lodash');
 var Log = require('log');
 var log = new Log('info');
 var rollbar = require('rollbar');
@@ -41,6 +42,19 @@ function logOnTimedout(req, res, next){
     next();
 }
 
+function applyCurrentEnvironment(item) {
+    if (item.src) {
+        item.src = IntelligenceBankConfig.host + item.src;
+    }
+    if (item.thumb) {
+        item.thumb = IntelligenceBankConfig.host + item.thumb;
+    }
+    if (item.items) {
+        item.items = _.map(item.items, asset => applyCurrentEnvironment(asset));
+    }
+    return item;
+}
+
 // query the asset
 app.get(/^\/a\/{0,1}(.+)?/i, function (req, res) {
     'use strict';
@@ -74,7 +88,7 @@ app.get(/^\/a\/{0,1}(.+)?/i, function (req, res) {
 
     assetPromise.then(data => {
         if (data) {
-            res.send(data);
+            res.send(applyCurrentEnvironment(data));
             log.debug(data);
             if (!data.cached) {
                 log.info('Cache Miss');
