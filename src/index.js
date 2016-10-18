@@ -42,7 +42,8 @@ function logOnTimedout(req, res, next){
     next();
 }
 
-function applyCurrentEnvironment(item) {
+function applyCurrentEnvironment(data) {
+    var item = _.cloneDeep(data);
     if (item.src) {
         item.src = IntelligenceBankConfig.host + item.src;
     }
