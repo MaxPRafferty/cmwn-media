@@ -1,7 +1,6 @@
 {
-    "username": "username",
-    "password": "password",
-    "instanceUrl": "instanceUrl",
-    "host": "host url",
-    "trackingCookie": "cookie"
+    "username": "<enter username>",
+    "password": "<enter password",
+    "platformUrl": "changemyworldnow.intelligencebank.com",
+    "host": "<url that will be added to media info>"
 }

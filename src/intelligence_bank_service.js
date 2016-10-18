@@ -2,12 +2,7 @@ var exports = module.exports = {};
 var _ = require('lodash');
 var Log = require('log');
 var log = new Log('info');
-//var Log = require('log');
-//var log = new Log();
 var config = require('../conf/intelligence_bank_config.json');
-//var config = require('../conf/config.json');
-//var env = config.env;
-var anyFirst = require('promise-any-first');
 
 var AWS = require('aws-sdk');
 AWS.config.loadFromPath('./conf/aws.json');
@@ -15,27 +10,54 @@ var docClient = new AWS.DynamoDB.DocumentClient();
 
 var IntelligenceBank = require('./intelligence_bank_client.js');
 
+// MPR, 10/14/16: I hate this dumb expensive transform so much. ![](http://i.imgur.com/vDvVOWh.gif)
+var stripEmptyValuesDeep = function (obj) {
+    return _.reduce(obj, function (a, v, k) {
+        if (v !== '') {
+            a[k] = v;
+            if (_.isObject(v) && !_.isArray(v)) {
+                a[k] = stripEmptyValuesDeep(v);
+            }
+        }
+        return a;
+    }, {});
+};
+
 const IB_API_URL = 'https://apius.intelligencebank.com';
 
 var transformFolderToExpected = function (resourceLocationUrl, folderId, data) {
     var transformed = data;
     transformed.items = [];
-    delete transformed.folderuuid;
     /* eslint-disable camelcase */
     transformed.asset_type = 'folder';
-    transformed.media_id = folderId;
+    transformed.media_id = transformed.folderuuid;
     /* eslint-enable camelcase */
     transformed.type = 'folder';
+    transformed.order = transformed.sortorder;
     transformed.created = data.createdtime;
-    delete transformed.createdtime;
     transformed.items = transformed.items.concat(_.map(data.resource || [], function (item) {
         return transformResourceToExpected(resourceLocationUrl, item);
     }));
-    delete transformed.resource;
-    transformed.items = transformed.items.concat(_.map(data.folder, function (item) {
-        return transformFolderToExpected(resourceLocationUrl, item.folderuuid, item);
+    transformed.items = transformed.items.concat(_.map(transformed.folder, function (item) {
+        var transform = transformFolderToExpected(resourceLocationUrl, item.folderuuid, item);
+        return transform;
     }));
+
+    transformed.items = _.reduce(transformed.items, (a, v) => {
+        console.log('3333333333333333');
+        a.push(v);
+        return a;
+    }, []);
+
+    transformed = stripEmptyValuesDeep(transformed);
+
+    delete transformed.createdtime;
+    delete transformed.sortorder;
+    delete transformed.resource;
     delete transformed.folder;
+    delete transformed.folderuuid;
+    delete transformed.folder;
+
     return transformed;
 };
 
@@ -43,15 +65,13 @@ var transformResourceToExpected = function (resourceLocationUrl, data) {
     var transformed = data;
     log.info('Got resource: ' + resourceLocationUrl);
     transformed.type = 'file';
-    //no hash currently being returned. hmmmmmm
     transformed.check = {
-        type: null,
-        value: null
+        type: transformed.filehash,
+        value: 'md5'
     };
+    delete transformed.filehash;
     /* eslint-disable camelcase */
     transformed.media_id = data.resourceuuid || data.uuid;
-    //nor mime type. double hmmmm
-    transformed.mime_type = null;
     /* eslint-enable camelcase */
     delete transformed.resourceuuid;
     transformed.name = data.title;
@@ -72,12 +92,9 @@ var transformResourceToExpected = function (resourceLocationUrl, data) {
 
     //DynamoDB is apparently out of their damn mind and doesn't allow empty
     // strings in their database.
-    transformed = _.reduce(transformed, function (a, v, k) {
-        if (v !== '') {
-            a[k] = v;
-        }
-        return a;
-    }, {});
+    // MAX - If you pay to see my nomad PHP talk Tomorrow,
+    // I will go over why dynamo cannot have empty values - MC
+    transformed = stripEmptyValuesDeep(transformed);
     delete transformed.versions;
 
     return transformed;
@@ -85,10 +102,13 @@ var transformResourceToExpected = function (resourceLocationUrl, data) {
 
 var ibClient = new IntelligenceBank({
     baseUrl: IB_API_URL,
+    username: config.username,
+    password: config.password,
+    platformUrl: config.platformUrl,
+    ownUrl: config.host,
     //log: Log,
     transformFolder: transformFolderToExpected,
     transformAsset: transformResourceToExpected,
-    trackingCookie: config.trackingCookie
 });
 
 
@@ -98,7 +118,7 @@ exports.init = function () {
     docClient.get({
         TableName: 'intelligence_bank_keys',
         Key: {
-            'key_name': 'apikey'
+            'key_name': 'apiKey'
         }
     }, function (err, data) {
         if (err || !Object.keys(data).length) {
@@ -106,17 +126,19 @@ exports.init = function () {
             ibClient.connect({
                 username: config.username,
                 password: config.password,
-                instanceUrl: config.instanceUrl,
+                platformUrl: config.platformUrl,
                 ownUrl: config.host,
                 onConnect: function (data_) {
+                    log.info('success, storing: ' + JSON.stringify(data_));
                     //store in dynamo
                     docClient.put({TableName: 'intelligence_bank_keys', Item: {
-                        'key_name': 'apikey',
+                        'key_name': 'apiKey',
                         useruuid: data_.useruuid,
-                        apikey: data_.apikey
+                        apiKey: data_.apiKey,
+                        tracking: data_.tracking
                     }}, function (err_) {
-                        if (err_) {
-                            log.warn('cache store failed: ' + err_);
+                        if (err_ != null) {
+                            log.warn('key cache store failed: ' + err_);
                         }
                     });
                 }
@@ -124,9 +146,10 @@ exports.init = function () {
         } else {
             log.info('retrieving stored key');
             ibClient.connect({
-                apikey: data.Item.apikey,
+                apiKey: data.Item.apiKey,
                 useruuid: data.Item.useruuid,
-                instanceUrl: config.instanceUrl,
+                tracking: data.Item.tracking,
+                platformUrl: config.platformUrl,
                 ownUrl: config.host,
             });
         }
@@ -137,21 +160,30 @@ exports.init = function () {
  * @param assetId (string) the id of the file or folder to find
  * @param r (function) the function the calls the resolve for the Promise
  */
-exports.getAssetInfo = function (assetId, r) {
+exports.getAssetInfo = function (assetId, resolve, reject) {
     var requestData = {};
     if (assetId != null && assetId !== 0 && assetId !== '0' && assetId !== '') {
         requestData.id = assetId;
     }
     //we do not know at this point if we have a folder or an asset. The only way to know
     //is to check both. One call will always fail, one will always succeed.
-    anyFirst([ibClient.getAssetInfo(requestData), ibClient.getFolderInfo(requestData)])
-        .then(function (data_) {
-            data_.id = data_.media_id || data_.uuid;
-            r(data_);
-        })
-        .catch(function (err_) {
-            log.error('Could not retrieve asset ' + err_);
-            r('ERROR: 500. Details: ' + err_);
+
+    var success = function (data_) {
+        log.info('here 8000');
+        data_.id = data_.media_id || data_.uuid;
+        resolve(data_);
+    };
+
+    ibClient.getAssetInfo(requestData)
+        .then(success)
+        .catch(function (assetError) {
+            log.error('error when requesting asset information', assetError);
+            ibClient.getFolderInfo(requestData)
+                .then(success)
+                .catch(function (folderError) {
+                    log.error('error when requesting folder information', folderError);
+                    reject('ERROR: 500. Details: ' + folderError);
+                });
         });
 };
 
@@ -161,5 +193,5 @@ exports.getAssetInfo = function (assetId, r) {
  */
 exports.getAsset = function (assetId, r) {
     'use strict';
-    r({url: ibClient.getAssetUrl(assetId)});
+    r({url: ibClient.getAssetUrl(assetId), tracking: ibClient.getTracking()});
 };
