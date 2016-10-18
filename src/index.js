@@ -12,6 +12,7 @@ var IntelligenceBankConfig = require('../conf/intelligence_bank_config.json');
 var rollbarKeys = require('../conf/rollbar.json');
 var AWS = require('aws-sdk');
 var timeout = require('connect-timeout');
+var cliArgs = require('optimist').argv;
 
 AWS.config.loadFromPath('./conf/aws.json');
 var docClient = new AWS.DynamoDB.DocumentClient();
@@ -117,7 +118,7 @@ app.get(/^\/a\/{0,1}(.+)?/i, function (req, res) {
     });
 
     docClient.get(params, function (err, data) {
-        if (err || !Object.keys(data).length) {
+        if (err || !Object.keys(data).length || cliArgs.n || cliArgs.nocache) {
             log.debug('No cache data for', data);
             service.getAssetInfo(assetId, assetResolve, assetReject);
         } else {
