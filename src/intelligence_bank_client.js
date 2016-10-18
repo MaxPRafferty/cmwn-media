@@ -128,7 +128,7 @@ class IntelligenceBank {
                     return;
                 }
 
-                if (response.statusCode.indexOf('2') === 0) {
+                if (Number(response.statusCode) > 300 || Number(response.statusCode) < 199) {
                     log.error('Invalid response code', response);
                     reject({status: 500, message: 'Internal server error [0x193]'});
                     return;
@@ -180,7 +180,7 @@ class IntelligenceBank {
                             throw ({status: 500, message: 'Internal server error [0x1F5]'});
                         }
 
-                        if (response.statusCode.indexOf('2') === 0) {
+                        if (Number(response.statusCode) > 300 || Number(response.statusCode) < 199) {
                             log.error('Invalid response code', response);
                             throw ({status: 500, message: 'Internal server error [0x1F2]'});
                         }
