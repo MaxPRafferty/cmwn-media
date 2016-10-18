@@ -64,6 +64,9 @@ var transformResourceToExpected = function (resourceLocationUrl, data) {
     var transformed = data;
     log.info('Got resource: ' + resourceLocationUrl);
     transformed.type = 'file';
+    /* eslint-disable camelcase */
+    transformed.asset_type = 'item';
+    /* eslint-enable camelcase */
     transformed.check = {
         type: transformed.filehash,
         value: 'md5'
