@@ -67,15 +67,14 @@ var transformResourceToExpected = function (resourceLocationUrl, data) {
     /* eslint-disable camelcase */
     transformed.asset_type = 'item';
     /* eslint-enable camelcase */
+    transformed.order = transformed.sortorder;
     transformed.check = {
         type: transformed.filehash,
         value: 'md5'
     };
-    delete transformed.filehash;
     /* eslint-disable camelcase */
     transformed.media_id = data.resourceuuid || data.uuid;
     /* eslint-enable camelcase */
-    delete transformed.resourceuuid;
     transformed.name = data.title;
     transformed.src = resourceLocationUrl + transformed.media_id;
     transformed.thumb = resourceLocationUrl + transformed.media_id + '&compressiontype=2&size=25';
@@ -97,6 +96,10 @@ var transformResourceToExpected = function (resourceLocationUrl, data) {
     // MAX - If you pay to see my nomad PHP talk Tomorrow,
     // I will go over why dynamo cannot have empty values - MC
     transformed = stripEmptyValuesDeep(transformed);
+
+    delete transformed.filehash;
+    delete transformed.resourceuuid;
+    delete transformed.sortorder;
     delete transformed.versions;
 
     return transformed;
