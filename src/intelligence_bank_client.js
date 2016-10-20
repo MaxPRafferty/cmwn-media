@@ -4,6 +4,13 @@ var Log = require('log');
 var log = new Log('info');
 var httprequest = require('request');
 
+var AWS = require('aws-sdk');
+var IntelligenceBankConfig = require('../conf/intelligence_bank_config.json');
+var docClient = new AWS.DynamoDB.DocumentClient();
+const CACHE_EXPIRY = 1; //hours
+
+var rollbar = require('rollbar');
+
 const IB_API_ENDPOINT = 'https://apius.intelligencebank.com';
 
 const IB_PATHS = {
@@ -256,14 +263,27 @@ class IntelligenceBank {
                         reject(err_);
                     });
             } else if (options.path) {
-                self.getFolderByPath(options.path)
-                    .then(function (data) {
-                        resolve(data);//no need to transform, happens in getFolderByPath
-                    })
-                    .catch(function (err_) {
-                        log.error(err_);
-                        reject(err_);
-                    });
+                var params = {
+                    TableName: 'intelligence_bank_cache',
+                    Key: {
+                        'path': options.path
+                    }
+                };
+
+                docClient.get(params, function (err_, data) {
+                    if (err_) {
+                        self.getFolderByPath(options.path)
+                            .then(function (data_) {
+                                resolve(data_);//no need to transform, happens in getFolderByPath
+                            })
+                            .catch(function (err__) {
+                                log.error(err__);
+                                reject(err__);
+                            });
+                    } else {
+                        resolve(data);
+                    }
+                });
             } else {
                 err = 'No ID or path provided. Folder cannot be retrieved. Options passed: ' + JSON.stringify(options);
                 log.error(err);
@@ -307,6 +327,18 @@ class IntelligenceBank {
                 //we are being naughty and using side effects of this transformation for
                 //caching purposes, hence why we are calling it all the time.
                 var transformedFolder = self.transformFolder(undefined, data);
+
+                docClient.put({TableName: 'intelligence_bank_cache', Item: {
+                    path: currentPath || 'root',
+                    expires: Math.floor((new Date).getTime() / 1000) + CACHE_EXPIRY * 360000,
+                    data: transformedFolder
+                }}, function (err) {
+                    if (err) {
+                        log.error('cache store failed: ' + err);
+                        rollbar.reportMessageWithPayloadData('Error trying to cache asset', {error: err});
+                    }
+                });
+
                 if (currentPath === pathToMatch) {
                     resolve(transformedFolder);
                 } else {
@@ -531,43 +563,6 @@ class IntelligenceBank {
     getTracking() {
         return this.tracking;
     }
-    // getAsset(options = {}, assetId = 0) {
-    //     var self = this;
-    //     var loginPromise = options.forceLogin ?
-    //             this.login() :
-    //             Promise.resolve({
-    //                 apiKey: self.apiKey,
-    //                 useruuid: self.apiKey,
-    //                 tracking: self.tracking
-    //             });
-
-    //     return new Promise(function (resolve, reject) {
-    //         loginPromise.then(function (loginDetails) {
-    //             self.onConnect(loginDetails);
-    //             options.uri = this.getAssetUrl(assetId.split('.')[0], assetId.split('.')[1]);
-    //             try {
-    //                 options.cookie = self.tracking;
-    //                 self.httpRequest.get(options, function (err, response, data) {
-    //                     if (err) {
-    //                         log.error(err);
-    //                         throw ({status: 500, message: 'Internal server error [0x1FQ]'});
-    //                     }
-
-    //                     resolve(data);
-    //                 });
-    //             } catch(err) {
-    //                 if (!options.forceLogin) {
-    //                     log.info('Request failed for reason: ' + err + '. Cached login information expired. Retrying with explicit login');
-    //                     options.forceLogin = true;
-    //                     this.makeHTTPCall(options).then(result => resolve(result)).catch(err_ => reject(err_));
-    //                 } else {
-    //                     log.error(err);
-    //                     reject(err);
-    //                 }
-    //             }
-    //         }
-    //     ); });
-    // }
 }
 
 module.exports = IntelligenceBank;
