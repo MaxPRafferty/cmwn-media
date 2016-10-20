@@ -179,6 +179,7 @@ app.get('/f/*', function (req, res) {
                         mimeType = 'image/png';
                     }
                     response.headers['content-type'] = mimeType;
+                    res.contentType(mimeType);
                     response.headers['content-disposition'] = 'inline;';
                     response.headers.etag = crypto.createHash('md5').update(data.url).digest('hex');
                     return response;

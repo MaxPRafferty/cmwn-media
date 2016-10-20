@@ -458,12 +458,19 @@ class IntelligenceBank {
             });
         return folder;
     }
-    getAssetUrl(assetId) {
+    getAssetUrl(file) {
+        var assetId = file.split('?')[0];
+        var assetArray = assetId.split('.');
+        var ext = assetArray.pop();
+        assetId = assetArray.join('.');
+        var query = file.split('?')[1];
         var resourceUrl =
             IB_API_ENDPOINT + IB_PATHS.RESOURCE +
             '?p10=' + this.apiKey +
             '&p20=' + this.useruuid +
-            '&fileuuid=' + assetId.replace('?', '&');
+            '&fileuuid=' + assetId +
+            '&ext=' + ext +
+            (query ? '&' + query : '');
         log.info('trying to display image from ' + resourceUrl);
         return resourceUrl;
     }
@@ -483,7 +490,7 @@ class IntelligenceBank {
         return new Promise(function (resolve, reject) {
             loginPromise.then(function (loginDetails) {
                 self.onConnect(loginDetails);
-                options.uri = this.getAssetUrl(assetId);
+                options.uri = this.getAssetUrl(assetId.split('.')[0], assetId.split('.')[1]);
                 try {
                     options.cookie = self.tracking;
                     self.httpRequest.get(options, function (err, response, data) {

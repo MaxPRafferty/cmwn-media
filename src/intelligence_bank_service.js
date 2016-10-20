@@ -61,6 +61,7 @@ var transformFolderToExpected = function (resourceLocationUrl, folderId, data) {
 };
 
 var transformResourceToExpected = function (resourceLocationUrl, data) {
+    var ext;
     var transformed = data;
     log.info('Got resource: ' + resourceLocationUrl);
     transformed.type = 'file';
@@ -76,8 +77,9 @@ var transformResourceToExpected = function (resourceLocationUrl, data) {
     transformed.media_id = data.resourceuuid || data.uuid;
     /* eslint-enable camelcase */
     transformed.name = data.title;
-    transformed.src = resourceLocationUrl + transformed.media_id;
-    transformed.thumb = resourceLocationUrl + transformed.media_id + '&compressiontype=2&size=25';
+    ext = transformed.origfilename.split('.').pop();
+    transformed.src = resourceLocationUrl + transformed.media_id + '.' + ext;
+    transformed.thumb = resourceLocationUrl + transformed.media_id + '.' + ext + '&compressiontype=2&size=25';
 
     data.tags = data.tags || [];
 
@@ -167,7 +169,7 @@ exports.init = function () {
  */
 exports.getAssetInfo = function (assetId, resolve, reject) {
     var requestData = {};
-    if (assetId.indexOf('/') !== -1 || assetId.length !== 32) {
+    if (assetId !== '0' && (assetId.indexOf('/') !== -1 || assetId.length !== 32)) {
         requestData.path = assetId;
     } else if (assetId != null && assetId !== 0 && assetId !== '0' && assetId !== '') {
         requestData.id = assetId;
