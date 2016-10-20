@@ -262,27 +262,14 @@ class IntelligenceBank {
                         reject(err_);
                     });
             } else if (options.path) {
-                var params = {
-                    TableName: 'intelligence_bank_cache',
-                    Key: {
-                        'path': options.path
-                    }
-                };
-
-                docClient.get(params, function (err_, data) {
-                    if (err_) {
-                        self.getFolderByPath(options.path)
-                            .then(function (data_) {
-                                resolve(data_);//no need to transform, happens in getFolderByPath
-                            })
-                            .catch(function (err__) {
-                                log.error(err__);
-                                reject(err__);
-                            });
-                    } else {
-                        resolve(data);
-                    }
-                });
+                self.getFolderByPath(options.path)
+                    .then(function (data_) {
+                        resolve(data_);//no need to transform, happens in getFolderByPath
+                    })
+                    .catch(function (err__) {
+                        log.error(err__);
+                        reject(err__);
+                    });
             } else {
                 err = 'No ID or path provided. Folder cannot be retrieved. Options passed: ' + JSON.stringify(options);
                 log.error(err);
@@ -320,49 +307,68 @@ class IntelligenceBank {
         };
         // eslint-disable-next-line curly
         if (currentFolderId === '') delete options.qs.folderuuid;
-        self.makeHTTPCall(options)
-            .then(function (data) {
-                var newPath;
-                //we are being naughty and using side effects of this transformation for
-                //caching purposes, hence why we are calling it all the time.
-                var transformedFolder = self.transformFolder(undefined, data);
 
-                docClient.put({TableName: 'intelligence_bank_cache', Item: {
-                    path: currentPath || 'root',
-                    expires: Math.floor((new Date).getTime() / 1000) + CACHE_EXPIRY * 360000,
-                    data: transformedFolder
-                }}, function (err) {
-                    if (err) {
-                        log.error('cache store failed: ' + err);
-                        rollbar.reportMessageWithPayloadData('Error trying to cache asset', {error: err});
-                    }
-                });
+        var params = {
+            TableName: 'intelligence_bank_cache',
+            Key: {
+                'path': pathToMatch
+            }
+        };
 
-                if (currentPath === pathToMatch) {
-                    resolve(transformedFolder);
-                } else {
-                    _.some(transformedFolder.items, function (item) {
-                        if (item.name === pathToMatch.split('/')[foldersSearched]) {
-                            newPath = currentPath ? currentPath + '/' + item.name : item.name;
-                            self.getFolderByPath(pathToMatch, newPath, item.media_id || item.fileuuid, ++foldersSearched)
-                                .then(function (data_) {
-                                    resolve(data_); //again, no need to double transform
-                                })
-                                .catch(function () {
-                                    foldersSearched++;
-                                    if (foldersSearched === data.response.folder.length) {
-                                        reject('folder does not exist in subtree path ' + currentPath + item.name);
-                                    }
-                                });
-                            return true;
+        if (currentPath) {
+            params.Key.path = currentPath;
+        }
+
+        docClient.get(params, function (err_, cacheData) {
+            if (err_ || !cacheData.Item || !cacheData.Item.data) {
+                self.makeHTTPCall(options)
+                    .then(function (data) {
+                        var newPath;
+                        //we are being naughty and using side effects of this transformation for
+                        //caching purposes, hence why we are calling it all the time.
+                        var transformedFolder = self.transformFolder(undefined, data);
+
+                        docClient.put({TableName: 'intelligence_bank_cache', Item: {
+                            path: currentPath || 'root',
+                            expires: Math.floor((new Date).getTime() / 1000) + CACHE_EXPIRY * 360000,
+                            data: transformedFolder
+                        }}, function (err) {
+                            if (err) {
+                                log.error('cache store failed: ' + err);
+                                rollbar.reportMessageWithPayloadData('Error trying to cache asset', {error: err});
+                            }
+                        });
+
+                        if (currentPath === pathToMatch) {
+                            resolve(transformedFolder);
+                        } else {
+                            _.some(transformedFolder.items, function (item) {
+                                if (item.name === pathToMatch.split('/')[foldersSearched]) {
+                                    newPath = currentPath ? currentPath + '/' + item.name : item.name;
+                                    self.getFolderByPath(pathToMatch, newPath, item.media_id || item.fileuuid, ++foldersSearched)
+                                        .then(function (data_) {
+                                            resolve(data_); //again, no need to double transform
+                                        })
+                                        .catch(function () {
+                                            foldersSearched++;
+                                            if (foldersSearched === data.response.folder.length) {
+                                                reject('folder does not exist in subtree path ' + currentPath + item.name);
+                                            }
+                                        });
+                                    return true;
+                                }
+                            });
                         }
+                    })
+                    .catch(function (err) {
+                        log.error(err);
+                        reject(err);
                     });
-                }
-            })
-            .catch(function (err) {
-                log.error(err);
-                reject(err);
-            });
+            } else {
+                resolve(cacheData.Item.data);
+            }
+        });
+
         return folder;
     }
     getAssetInfo(options) {
