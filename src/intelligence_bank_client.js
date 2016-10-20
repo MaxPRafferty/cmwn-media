@@ -282,10 +282,11 @@ class IntelligenceBank {
      * service will be caching everything by both path and ID, however, so we will
      * only be falling back to this source of truth as the cache expires.
      */
-    getFolderByPath(pathToMatch, currentPath, currentFolderId) {
+    getFolderByPath(pathToMatch, currentPath, currentFolderId, foldersSearched = 0) {
         log.info('getting folder by path');
         currentPath = currentPath || '';
         currentFolderId = currentFolderId || '';
+        var self = this;
         var resolve;
         var reject;
         var folder = new Promise(function (resolve_, reject_) {
@@ -293,35 +294,49 @@ class IntelligenceBank {
             reject = reject_;
         });
         var options = {
-            uri: this.baseUrl + IB_PATHS.RESOURCE,
+            uri: self.baseUrl + IB_PATHS.RESOURCE,
             qs: {
                 folderuuid: currentFolderId
             }
         };
         // eslint-disable-next-line curly
         if (currentFolderId === '') delete options.qs.folderuuid;
-        this.makeHTTPCall(options)
+        log.info('currentFolderId ' + currentFolderId);
+        self.makeHTTPCall(options)
             .then(function (data) {
-                var foldersSearched = 0;
-                _.each(data.response.folder, function (item) {
-                    //we are being naughty and using side effects of this transformation for
-                    //caching purposes, hence why we are calling it all the time.
-                    var transformedFolder = this.transformFolder(item);
-                    if (currentPath + item.name === pathToMatch) {
-                        resolve(transformedFolder);
-                    } else {
-                        this.getFolderByPath(pathToMatch, currentPath + item.name, item.folderuuid)
-                            .then(function (data_) {
-                                resolve(data_); //again, no need to double transform
-                            })
-                            .catch(function () {
-                                foldersSearched++;
-                                if (foldersSearched === data.response.folder.length) {
-                                    reject('folder does not exist in subtree path ' + currentPath + item.name);
-                                }
-                            });
-                    }
-                });
+                var newPath;
+                //we are being naughty and using side effects of this transformation for
+                //caching purposes, hence why we are calling it all the time.
+                var transformedFolder = self.transformFolder(undefined, data);
+                log.info(currentPath);
+                log.info(currentPath === pathToMatch);
+                if (currentPath === pathToMatch) {
+                    resolve(transformedFolder);
+                } else {
+                    _.some(transformedFolder.items, function (item) {
+                        log.info(item.name);
+                        // log.info(pathToMatch);
+                        // log.info(currentPath);
+                        log.info(foldersSearched);
+                        // log.info(pathToMatch.split('/')[foldersSearched]);
+                        log.info(item.name === pathToMatch.split('/')[foldersSearched]);
+                        if (item.name === pathToMatch.split('/')[foldersSearched]) {
+                            log.info(item);
+                            newPath = currentPath ? currentPath + '/' + item.name : item.name;
+                            self.getFolderByPath(pathToMatch, newPath, item.media_id || item.fileuuid, ++foldersSearched)
+                                .then(function (data_) {
+                                    resolve(data_); //again, no need to double transform
+                                })
+                                .catch(function () {
+                                    foldersSearched++;
+                                    if (foldersSearched === data.response.folder.length) {
+                                        reject('folder does not exist in subtree path ' + currentPath + item.name);
+                                    }
+                                });
+                            return true;
+                        }
+                    });
+                }
             })
             .catch(function (err) {
                 log.error(err);

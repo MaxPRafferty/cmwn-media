@@ -167,7 +167,9 @@ exports.init = function () {
  */
 exports.getAssetInfo = function (assetId, resolve, reject) {
     var requestData = {};
-    if (assetId != null && assetId !== 0 && assetId !== '0' && assetId !== '') {
+    if (assetId.indexOf('/') !== -1 || assetId.length !== 32) {
+        requestData.path = assetId;
+    } else if (assetId != null && assetId !== 0 && assetId !== '0' && assetId !== '') {
         requestData.id = assetId;
     }
     //we do not know at this point if we have a folder or an asset. The only way to know
