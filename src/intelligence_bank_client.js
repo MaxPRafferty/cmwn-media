@@ -301,25 +301,16 @@ class IntelligenceBank {
         };
         // eslint-disable-next-line curly
         if (currentFolderId === '') delete options.qs.folderuuid;
-        log.info('currentFolderId ' + currentFolderId);
         self.makeHTTPCall(options)
             .then(function (data) {
                 var newPath;
                 //we are being naughty and using side effects of this transformation for
                 //caching purposes, hence why we are calling it all the time.
                 var transformedFolder = self.transformFolder(undefined, data);
-                log.info(currentPath);
-                log.info(currentPath === pathToMatch);
                 if (currentPath === pathToMatch) {
                     resolve(transformedFolder);
                 } else {
                     _.some(transformedFolder.items, function (item) {
-                        log.info(item.name);
-                        // log.info(pathToMatch);
-                        // log.info(currentPath);
-                        log.info(foldersSearched);
-                        // log.info(pathToMatch.split('/')[foldersSearched]);
-                        log.info(item.name === pathToMatch.split('/')[foldersSearched]);
                         if (item.name === pathToMatch.split('/')[foldersSearched]) {
                             log.info(item);
                             newPath = currentPath ? currentPath + '/' + item.name : item.name;
