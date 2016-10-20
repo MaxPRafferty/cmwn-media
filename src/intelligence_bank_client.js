@@ -5,7 +5,6 @@ var log = new Log('info');
 var httprequest = require('request');
 
 var AWS = require('aws-sdk');
-var IntelligenceBankConfig = require('../conf/intelligence_bank_config.json');
 var docClient = new AWS.DynamoDB.DocumentClient();
 const CACHE_EXPIRY = 1; //hours
 
