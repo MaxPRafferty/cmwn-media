@@ -202,5 +202,7 @@ exports.getAssetInfo = function (assetId, resolve, reject) {
  */
 exports.getAsset = function (assetId, r) {
     'use strict';
-    r({url: ibClient.getAssetUrl(assetId), tracking: ibClient.getTracking()});
+    ibClient.getAssetUrl(assetId).then(url => {
+        r({url, tracking: ibClient.getTracking()});
+    });
 };

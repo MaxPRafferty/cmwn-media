@@ -312,7 +312,6 @@ class IntelligenceBank {
                 } else {
                     _.some(transformedFolder.items, function (item) {
                         if (item.name === pathToMatch.split('/')[foldersSearched]) {
-                            log.info(item);
                             newPath = currentPath ? currentPath + '/' + item.name : item.name;
                             self.getFolderByPath(pathToMatch, newPath, item.media_id || item.fileuuid, ++foldersSearched)
                                 .then(function (data_) {
@@ -464,56 +463,111 @@ class IntelligenceBank {
         var ext = assetArray.pop();
         assetId = assetArray.join('.');
         var query = file.split('?')[1];
-        var resourceUrl =
-            IB_API_ENDPOINT + IB_PATHS.RESOURCE +
-            '?p10=' + this.apiKey +
-            '&p20=' + this.useruuid +
-            '&fileuuid=' + assetId +
-            '&ext=' + ext +
-            (query ? '&' + query : '');
-        log.info('trying to display image from ' + resourceUrl);
-        return resourceUrl;
+
+        var resolve;
+        var reject;
+        var asset = new Promise(function (resolve_, reject_) {
+            resolve = resolve_;
+            reject = reject_;
+        });
+
+        if (assetId !== '0' && (assetId.indexOf('/') !== -1 || assetId.length !== 32)) {
+            this.getAssetIdByPath(assetId + '.' + ext)
+            .then(assetIdFromPath => {
+                var resourceUrl =
+                    IB_API_ENDPOINT + IB_PATHS.RESOURCE +
+                    '?p10=' + this.apiKey +
+                    '&p20=' + this.useruuid +
+                    '&fileuuid=' + assetIdFromPath +
+                    '&ext=' + ext +
+                    (query ? '&' + query : '');
+                log.info('trying to display image from ' + resourceUrl);
+                resolve(resourceUrl);
+            })
+            .catch(err => {
+                reject(err);
+            });
+        } else {
+            var resourceUrl =
+                IB_API_ENDPOINT + IB_PATHS.RESOURCE +
+                '?p10=' + this.apiKey +
+                '&p20=' + this.useruuid +
+                '&fileuuid=' + assetId +
+                '&ext=' + ext +
+                (query ? '&' + query : '');
+            log.info('trying to display image from ' + resourceUrl);
+            resolve(resourceUrl);
+        }
+
+        return asset;
+    }
+    getAssetIdByPath(path) {
+        var folderPath = path.split('/');
+        var filename = folderPath.pop();
+        folderPath = folderPath.join('/');
+
+        var resolve;
+        var reject;
+        var assetId = new Promise(function (resolve_, reject_) {
+            resolve = resolve_;
+            reject = reject_;
+        });
+
+        this.getFolderByPath(folderPath)
+        .then(folderInfo => {
+            _.some(folderInfo.items, item => {
+                if (item.origfilename === filename) {
+                    resolve(item.media_id);
+                    return true;
+                }
+            });
+        })
+        .catch(err => {
+            reject(err);
+        });
+
+        return assetId;
     }
     getTracking() {
         return this.tracking;
     }
-    getAsset(options = {}, assetId = 0) {
-        var self = this;
-        var loginPromise = options.forceLogin ?
-                this.login() :
-                Promise.resolve({
-                    apiKey: self.apiKey,
-                    useruuid: self.apiKey,
-                    tracking: self.tracking
-                });
+    // getAsset(options = {}, assetId = 0) {
+    //     var self = this;
+    //     var loginPromise = options.forceLogin ?
+    //             this.login() :
+    //             Promise.resolve({
+    //                 apiKey: self.apiKey,
+    //                 useruuid: self.apiKey,
+    //                 tracking: self.tracking
+    //             });
 
-        return new Promise(function (resolve, reject) {
-            loginPromise.then(function (loginDetails) {
-                self.onConnect(loginDetails);
-                options.uri = this.getAssetUrl(assetId.split('.')[0], assetId.split('.')[1]);
-                try {
-                    options.cookie = self.tracking;
-                    self.httpRequest.get(options, function (err, response, data) {
-                        if (err) {
-                            log.error(err);
-                            throw ({status: 500, message: 'Internal server error [0x1FQ]'});
-                        }
+    //     return new Promise(function (resolve, reject) {
+    //         loginPromise.then(function (loginDetails) {
+    //             self.onConnect(loginDetails);
+    //             options.uri = this.getAssetUrl(assetId.split('.')[0], assetId.split('.')[1]);
+    //             try {
+    //                 options.cookie = self.tracking;
+    //                 self.httpRequest.get(options, function (err, response, data) {
+    //                     if (err) {
+    //                         log.error(err);
+    //                         throw ({status: 500, message: 'Internal server error [0x1FQ]'});
+    //                     }
 
-                        resolve(data);
-                    });
-                } catch(err) {
-                    if (!options.forceLogin) {
-                        log.info('Request failed for reason: ' + err + '. Cached login information expired. Retrying with explicit login');
-                        options.forceLogin = true;
-                        this.makeHTTPCall(options).then(result => resolve(result)).catch(err_ => reject(err_));
-                    } else {
-                        log.error(err);
-                        reject(err);
-                    }
-                }
-            }
-        ); });
-    }
+    //                     resolve(data);
+    //                 });
+    //             } catch(err) {
+    //                 if (!options.forceLogin) {
+    //                     log.info('Request failed for reason: ' + err + '. Cached login information expired. Retrying with explicit login');
+    //                     options.forceLogin = true;
+    //                     this.makeHTTPCall(options).then(result => resolve(result)).catch(err_ => reject(err_));
+    //                 } else {
+    //                     log.error(err);
+    //                     reject(err);
+    //                 }
+    //             }
+    //         }
+    //     ); });
+    // }
 }
 
 module.exports = IntelligenceBank;
