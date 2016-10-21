@@ -33,8 +33,12 @@ var transformFolderToExpected = function (resourceLocationUrl, folderId, data) {
     transformed.media_id = transformed.folderuuid;
     /* eslint-enable camelcase */
     transformed.type = 'folder';
-    transformed.order = transformed.sortorder;
-    transformed.created = data.createdtime;
+    if (transformed.sortorder != null) {
+        transformed.order = transformed.sortorder;
+    }
+    if (transformed.createdtime != null) {
+        transformed.created = data.createdtime;
+    }
     transformed.items = transformed.items.concat(_.map(data.resource || [], function (item) {
         return transformResourceToExpected(resourceLocationUrl, item);
     }));
@@ -170,6 +174,9 @@ exports.init = function () {
 exports.getAssetInfo = function (assetId, resolve, reject) {
     var requestData = {};
     if (assetId !== '0' && (assetId.indexOf('/') !== -1 || assetId.length !== 32)) {
+        if (assetId[assetId.length - 1] === '/') {
+            assetId.slice(0, -1);
+        }
         requestData.path = assetId;
     } else if (assetId != null && assetId !== 0 && assetId !== '0' && assetId !== '') {
         requestData.id = assetId;
@@ -202,6 +209,9 @@ exports.getAssetInfo = function (assetId, resolve, reject) {
  */
 exports.getAsset = function (assetId, r) {
     'use strict';
+    if (assetId[assetId.length - 1] === '/') {
+        assetId.slice(0, -1);
+    }
     ibClient.getAssetUrl(assetId).then(url => {
         r({url, tracking: ibClient.getTracking()});
     });

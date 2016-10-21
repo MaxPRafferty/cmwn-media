@@ -326,18 +326,8 @@ class IntelligenceBank {
                         var newPath;
                         //we are being naughty and using side effects of this transformation for
                         //caching purposes, hence why we are calling it all the time.
+                        data.folderuuid = data.folderuuid || currentFolderId;
                         var transformedFolder = self.transformFolder(undefined, data);
-
-                        docClient.put({TableName: 'intelligence_bank_cache', Item: {
-                            path: currentPath || 'root',
-                            expires: Math.floor((new Date).getTime() / 1000) + CACHE_EXPIRY * 360000,
-                            data: transformedFolder
-                        }}, function (err) {
-                            if (err) {
-                                log.error('cache store failed: ' + err);
-                                rollbar.reportMessageWithPayloadData('Error trying to cache asset', {error: err});
-                            }
-                        });
 
                         if (currentPath === pathToMatch) {
                             resolve(transformedFolder);
@@ -350,22 +340,48 @@ class IntelligenceBank {
                                             resolve(data_); //again, no need to double transform
                                         })
                                         .catch(function () {
-                                            foldersSearched++;
-                                            if (foldersSearched === data.response.folder.length) {
-                                                reject('folder does not exist in subtree path ' + currentPath + item.name);
-                                            }
+                                            reject('folder does not exist in subtree path ' + currentPath + item.name);
                                         });
                                     return true;
                                 }
                             });
                         }
+
+                        docClient.put({TableName: 'intelligence_bank_cache', Item: {
+                            path: currentPath || 'root',
+                            expires: Math.floor((new Date).getTime() / 1000) + CACHE_EXPIRY * 360000,
+                            data: transformedFolder
+                        }}, function (err) {
+                            if (err) {
+                                log.error('cache store failed: ' + err);
+                                rollbar.reportMessageWithPayloadData('Error trying to cache asset', {error: err});
+                            }
+                        });
                     })
                     .catch(function (err) {
                         log.error(err);
                         reject(err);
                     });
             } else {
-                resolve(cacheData.Item.data);
+                var newPath;
+                var transformedFolder = cacheData.Item.data;
+                if (params.Key.path === pathToMatch) {
+                    resolve(transformedFolder);
+                } else {
+                    _.some(transformedFolder.items, function (item) {
+                        if (item.name === pathToMatch.split('/')[foldersSearched]) {
+                            newPath = currentPath ? currentPath + '/' + item.name : item.name;
+                            self.getFolderByPath(pathToMatch, newPath, item.media_id || item.fileuuid, ++foldersSearched)
+                                .then(function (data_) {
+                                    resolve(data_); //again, no need to double transform
+                                })
+                                .catch(function () {
+                                    reject('folder does not exist in subtree path ' + currentPath + item.name);
+                                });
+                            return true;
+                        }
+                    });
+                }
             }
         });
 
@@ -411,7 +427,7 @@ class IntelligenceBank {
                         reject(err_);
                     });
             } else if (options.path) {
-                self.getAssetFromTree(options.path)
+                self.getFolderByPath(options.path)
                     .then(function (data) {
                         resolve(data);//no need to transform, happens in getAssetsFromTreee
                     })
