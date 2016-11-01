@@ -232,10 +232,10 @@ class IntelligenceBank {
         //very simple. If an id is provided, retrieve it directly. If a path is provided, walk the tree until it is found
         try {
             if (options.id != null || (options.id == null && options.path == null)) {
-                log.info('getting folder by id');
                 if (options.id != null) {
                     qs.folderuuid = options.id;
                 }
+                log.info('getting folder by id at url ' + IB_PATHS.RESOURCE + '?' + JSON.stringify(qs));
                 self.makeHTTPCall({
                     uri: self.baseUrl + IB_PATHS.RESOURCE,
                     qs: qs
@@ -243,7 +243,7 @@ class IntelligenceBank {
                     .then(function (data) {
                         try {
                             log.info('got folder data for folder ' + options.id);
-
+                            log.info('full data ' + JSON.stringify(data));
                             if (data && data.folder) {
                                 // evidently data.response doesnt exist sometimes so... k.
                                 resolve(self.transformFolder(options.id, data));
@@ -412,7 +412,7 @@ class IntelligenceBank {
                         try {
                             log.info('got asset data for asset ' + options.id);
 
-                            if (!data.doc || data.numFound !== '1') {
+                            if (!data || !data.doc || data.numFound !== '1') {
                                 log.warning('No response for server information');
                                 reject(data);
                             } else {
