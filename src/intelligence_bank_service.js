@@ -33,8 +33,12 @@ var transformFolderToExpected = function (resourceLocationUrl, folderId, data) {
     transformed.media_id = transformed.folderuuid;
     /* eslint-enable camelcase */
     transformed.type = 'folder';
-    transformed.order = transformed.sortorder;
-    transformed.created = data.createdtime;
+    if (transformed.sortorder != null) {
+        transformed.order = transformed.sortorder;
+    }
+    if (transformed.createdtime != null) {
+        transformed.created = data.createdtime;
+    }
     transformed.items = transformed.items.concat(_.map(data.resource || [], function (item) {
         return transformResourceToExpected(resourceLocationUrl, item);
     }));
@@ -61,21 +65,25 @@ var transformFolderToExpected = function (resourceLocationUrl, folderId, data) {
 };
 
 var transformResourceToExpected = function (resourceLocationUrl, data) {
+    var ext;
     var transformed = data;
     log.info('Got resource: ' + resourceLocationUrl);
     transformed.type = 'file';
+    /* eslint-disable camelcase */
+    transformed.asset_type = 'item';
+    /* eslint-enable camelcase */
+    transformed.order = transformed.sortorder;
     transformed.check = {
         type: transformed.filehash,
         value: 'md5'
     };
-    delete transformed.filehash;
     /* eslint-disable camelcase */
     transformed.media_id = data.resourceuuid || data.uuid;
     /* eslint-enable camelcase */
-    delete transformed.resourceuuid;
     transformed.name = data.title;
-    transformed.src = resourceLocationUrl + transformed.media_id;
-    transformed.thumb = resourceLocationUrl + transformed.media_id + '&compressiontype=2&size=25';
+    ext = transformed.origfilename.split('.').pop();
+    transformed.src = resourceLocationUrl + transformed.media_id + '.' + ext;
+    transformed.thumb = resourceLocationUrl + transformed.media_id + '.' + ext + '&compressiontype=2&size=25';
 
     data.tags = data.tags || [];
 
@@ -94,6 +102,10 @@ var transformResourceToExpected = function (resourceLocationUrl, data) {
     // MAX - If you pay to see my nomad PHP talk Tomorrow,
     // I will go over why dynamo cannot have empty values - MC
     transformed = stripEmptyValuesDeep(transformed);
+
+    delete transformed.filehash;
+    delete transformed.resourceuuid;
+    delete transformed.sortorder;
     delete transformed.versions;
 
     return transformed;
@@ -161,7 +173,12 @@ exports.init = function () {
  */
 exports.getAssetInfo = function (assetId, resolve, reject) {
     var requestData = {};
-    if (assetId != null && assetId !== 0 && assetId !== '0' && assetId !== '') {
+    if (assetId !== '0' && (assetId.indexOf('/') !== -1 || assetId.length !== 32)) {
+        if (assetId[assetId.length - 1] === '/') {
+            assetId.slice(0, -1);
+        }
+        requestData.path = assetId;
+    } else if (assetId != null && assetId !== 0 && assetId !== '0' && assetId !== '') {
         requestData.id = assetId;
     }
     //we do not know at this point if we have a folder or an asset. The only way to know
@@ -192,5 +209,10 @@ exports.getAssetInfo = function (assetId, resolve, reject) {
  */
 exports.getAsset = function (assetId, r) {
     'use strict';
-    r({url: ibClient.getAssetUrl(assetId), tracking: ibClient.getTracking()});
+    if (assetId[assetId.length - 1] === '/') {
+        assetId.slice(0, -1);
+    }
+    ibClient.getAssetUrl(assetId).then(url => {
+        r({url, tracking: ibClient.getTracking()});
+    });
 };

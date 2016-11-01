@@ -4,6 +4,12 @@ var Log = require('log');
 var log = new Log('info');
 var httprequest = require('request');
 
+var AWS = require('aws-sdk');
+var docClient = new AWS.DynamoDB.DocumentClient();
+const CACHE_EXPIRY = 1; //hours
+
+var rollbar = require('rollbar');
+
 const IB_API_ENDPOINT = 'https://apius.intelligencebank.com';
 
 const IB_PATHS = {
@@ -257,12 +263,12 @@ class IntelligenceBank {
                     });
             } else if (options.path) {
                 self.getFolderByPath(options.path)
-                    .then(function (data) {
-                        resolve(data);//no need to transform, happens in getFolderByPath
+                    .then(function (data_) {
+                        resolve(data_);//no need to transform, happens in getFolderByPath
                     })
-                    .catch(function (err_) {
-                        log.error(err_);
-                        reject(err_);
+                    .catch(function (err__) {
+                        log.error(err__);
+                        reject(err__);
                     });
             } else {
                 err = 'No ID or path provided. Folder cannot be retrieved. Options passed: ' + JSON.stringify(options);
@@ -282,10 +288,11 @@ class IntelligenceBank {
      * service will be caching everything by both path and ID, however, so we will
      * only be falling back to this source of truth as the cache expires.
      */
-    getFolderByPath(pathToMatch, currentPath, currentFolderId) {
+    getFolderByPath(pathToMatch, currentPath, currentFolderId, foldersSearched = 0) {
         log.info('getting folder by path');
         currentPath = currentPath || '';
         currentFolderId = currentFolderId || '';
+        var self = this;
         var resolve;
         var reject;
         var folder = new Promise(function (resolve_, reject_) {
@@ -293,40 +300,91 @@ class IntelligenceBank {
             reject = reject_;
         });
         var options = {
-            uri: this.baseUrl + IB_PATHS.RESOURCE,
+            uri: self.baseUrl + IB_PATHS.RESOURCE,
             qs: {
                 folderuuid: currentFolderId
             }
         };
         // eslint-disable-next-line curly
         if (currentFolderId === '') delete options.qs.folderuuid;
-        this.makeHTTPCall(options)
-            .then(function (data) {
-                var foldersSearched = 0;
-                _.each(data.response.folder, function (item) {
-                    //we are being naughty and using side effects of this transformation for
-                    //caching purposes, hence why we are calling it all the time.
-                    var transformedFolder = this.transformFolder(item);
-                    if (currentPath + item.name === pathToMatch) {
-                        resolve(transformedFolder);
-                    } else {
-                        this.getFolderByPath(pathToMatch, currentPath + item.name, item.folderuuid)
-                            .then(function (data_) {
-                                resolve(data_); //again, no need to double transform
-                            })
-                            .catch(function () {
-                                foldersSearched++;
-                                if (foldersSearched === data.response.folder.length) {
-                                    reject('folder does not exist in subtree path ' + currentPath + item.name);
+
+        var params = {
+            TableName: 'intelligence_bank_cache',
+            Key: {
+                'path': pathToMatch
+            }
+        };
+
+        if (currentPath) {
+            params.Key.path = currentPath;
+        }
+
+        docClient.get(params, function (err_, cacheData) {
+            if (err_ || !cacheData.Item || !cacheData.Item.data) {
+                self.makeHTTPCall(options)
+                    .then(function (data) {
+                        var newPath;
+                        //we are being naughty and using side effects of this transformation for
+                        //caching purposes, hence why we are calling it all the time.
+                        data.folderuuid = data.folderuuid || currentFolderId;
+                        var transformedFolder = self.transformFolder(undefined, data);
+
+                        if (currentPath === pathToMatch) {
+                            resolve(transformedFolder);
+                        } else {
+                            _.some(transformedFolder.items, function (item) {
+                                if (item.name === pathToMatch.split('/')[foldersSearched]) {
+                                    newPath = currentPath ? currentPath + '/' + item.name : item.name;
+                                    self.getFolderByPath(pathToMatch, newPath, item.media_id || item.fileuuid, ++foldersSearched)
+                                        .then(function (data_) {
+                                            resolve(data_); //again, no need to double transform
+                                        })
+                                        .catch(function () {
+                                            reject('folder does not exist in subtree path ' + currentPath + item.name);
+                                        });
+                                    return true;
                                 }
                             });
-                    }
-                });
-            })
-            .catch(function (err) {
-                log.error(err);
-                reject(err);
-            });
+                        }
+
+                        docClient.put({TableName: 'intelligence_bank_cache', Item: {
+                            path: currentPath || 'root',
+                            expires: Math.floor((new Date).getTime() / 1000) + CACHE_EXPIRY * 360000,
+                            data: transformedFolder
+                        }}, function (err) {
+                            if (err) {
+                                log.error('cache store failed: ' + err);
+                                rollbar.reportMessageWithPayloadData('Error trying to cache asset', {error: err});
+                            }
+                        });
+                    })
+                    .catch(function (err) {
+                        log.error(err);
+                        reject(err);
+                    });
+            } else {
+                var newPath;
+                var transformedFolder = cacheData.Item.data;
+                if (params.Key.path === pathToMatch) {
+                    resolve(transformedFolder);
+                } else {
+                    _.some(transformedFolder.items, function (item) {
+                        if (item.name === pathToMatch.split('/')[foldersSearched]) {
+                            newPath = currentPath ? currentPath + '/' + item.name : item.name;
+                            self.getFolderByPath(pathToMatch, newPath, item.media_id || item.fileuuid, ++foldersSearched)
+                                .then(function (data_) {
+                                    resolve(data_); //again, no need to double transform
+                                })
+                                .catch(function () {
+                                    reject('folder does not exist in subtree path ' + currentPath + item.name);
+                                });
+                            return true;
+                        }
+                    });
+                }
+            }
+        });
+
         return folder;
     }
     getAssetInfo(options) {
@@ -369,7 +427,7 @@ class IntelligenceBank {
                         reject(err_);
                     });
             } else if (options.path) {
-                self.getAssetFromTree(options.path)
+                self.getFolderByPath(options.path)
                     .then(function (data) {
                         resolve(data);//no need to transform, happens in getAssetsFromTreee
                     })
@@ -452,54 +510,79 @@ class IntelligenceBank {
             });
         return folder;
     }
-    getAssetUrl(assetId) {
-        var resourceUrl =
-            IB_API_ENDPOINT + IB_PATHS.RESOURCE +
-            '?p10=' + this.apiKey +
-            '&p20=' + this.useruuid +
-            '&fileuuid=' + assetId.replace('?', '&');
-        log.info('trying to display image from ' + resourceUrl);
-        return resourceUrl;
+    getAssetUrl(file) {
+        var assetId = file.split('?')[0];
+        var assetArray = assetId.split('.');
+        var ext = assetArray.pop();
+        assetId = assetArray.join('.');
+        var query = file.split('?')[1];
+
+        var resolve;
+        var reject;
+        var asset = new Promise(function (resolve_, reject_) {
+            resolve = resolve_;
+            reject = reject_;
+        });
+
+        if (assetId !== '0' && (assetId.indexOf('/') !== -1 || assetId.length !== 32)) {
+            this.getAssetIdByPath(assetId + '.' + ext)
+            .then(assetIdFromPath => {
+                var resourceUrl =
+                    IB_API_ENDPOINT + IB_PATHS.RESOURCE +
+                    '?p10=' + this.apiKey +
+                    '&p20=' + this.useruuid +
+                    '&fileuuid=' + assetIdFromPath +
+                    '&ext=' + ext +
+                    (query ? '&' + query : '');
+                log.info('trying to display image from ' + resourceUrl);
+                resolve(resourceUrl);
+            })
+            .catch(err => {
+                reject(err);
+            });
+        } else {
+            var resourceUrl =
+                IB_API_ENDPOINT + IB_PATHS.RESOURCE +
+                '?p10=' + this.apiKey +
+                '&p20=' + this.useruuid +
+                '&fileuuid=' + assetId +
+                '&ext=' + ext +
+                (query ? '&' + query : '');
+            log.info('trying to display image from ' + resourceUrl);
+            resolve(resourceUrl);
+        }
+
+        return asset;
+    }
+    getAssetIdByPath(path) {
+        var folderPath = path.split('/');
+        var filename = folderPath.pop();
+        folderPath = folderPath.join('/');
+
+        var resolve;
+        var reject;
+        var assetId = new Promise(function (resolve_, reject_) {
+            resolve = resolve_;
+            reject = reject_;
+        });
+
+        this.getFolderByPath(folderPath)
+        .then(folderInfo => {
+            _.some(folderInfo.items, item => {
+                if (item.origfilename === filename) {
+                    resolve(item.media_id);
+                    return true;
+                }
+            });
+        })
+        .catch(err => {
+            reject(err);
+        });
+
+        return assetId;
     }
     getTracking() {
         return this.tracking;
-    }
-    getAsset(options = {}, assetId = 0) {
-        var self = this;
-        var loginPromise = options.forceLogin ?
-                this.login() :
-                Promise.resolve({
-                    apiKey: self.apiKey,
-                    useruuid: self.apiKey,
-                    tracking: self.tracking
-                });
-
-        return new Promise(function (resolve, reject) {
-            loginPromise.then(function (loginDetails) {
-                self.onConnect(loginDetails);
-                options.uri = this.getAssetUrl(assetId);
-                try {
-                    options.cookie = self.tracking;
-                    self.httpRequest.get(options, function (err, response, data) {
-                        if (err) {
-                            log.error(err);
-                            throw ({status: 500, message: 'Internal server error [0x1FQ]'});
-                        }
-
-                        resolve(data);
-                    });
-                } catch(err) {
-                    if (!options.forceLogin) {
-                        log.info('Request failed for reason: ' + err + '. Cached login information expired. Retrying with explicit login');
-                        options.forceLogin = true;
-                        this.makeHTTPCall(options).then(result => resolve(result)).catch(err_ => reject(err_));
-                    } else {
-                        log.error(err);
-                        reject(err);
-                    }
-                }
-            }
-        ); });
     }
 }
 
