@@ -161,6 +161,9 @@ app.get('/f/*', function (req, res) {
         log.debug(data);
         log.debug(err);
         log.debug(err2);
+        if (data.err) {
+            res.status(data.status || 500).send({error: data.err});
+        }
         if (data && data.url) {
             res.contentType('image/png');
             console.log('making request ' + data.url + ' with cookie ' + data.tracking);

@@ -524,6 +524,11 @@ class IntelligenceBank {
             reject = reject_;
         });
 
+        if (ext == null || ext === '' || assetArray.length === 0) {
+            reject('File has no extension 2');
+            //throw new Error('No file extension provided.');
+        }
+
         if (assetId !== '0' && (assetId.indexOf('/') !== -1 || assetId.length !== 32)) {
             this.getAssetIdByPath(assetId + '.' + ext)
             .then(assetIdFromPath => {
