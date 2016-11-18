@@ -172,6 +172,7 @@ exports.init = function () {
  * @param r (function) the function the calls the resolve for the Promise
  */
 exports.getAssetInfo = function (assetId, resolve, reject) {
+    console.log('Getting general asset info to determine folder or file type');
     var requestData = {};
     if (assetId !== '0' && (assetId.indexOf('/') !== -1 || assetId.length !== 32)) {
         if (assetId[assetId.length - 1] === '/') {

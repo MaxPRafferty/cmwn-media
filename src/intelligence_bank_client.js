@@ -200,6 +200,10 @@ class IntelligenceBank {
                             throw ({status: 401, message: 'Invalid Login. User not authorized'});
                         }
 
+                        if (data.message != null) {
+                            throw ({status: 500, message: 'Unknown server error: ' + data.message});
+                        }
+
                         log.info('got data');
                         resolve(data.response);
                     });
@@ -288,7 +292,8 @@ class IntelligenceBank {
      * service will be caching everything by both path and ID, however, so we will
      * only be falling back to this source of truth as the cache expires.
      */
-    getFolderByPath(pathToMatch, currentPath, currentFolderId, foldersSearched = 0) {
+    getFolderByPath(pathToMatch, currentPath = '', currentFolderId, foldersSearched = 0) {
+        console.log('walking folders: ' + pathToMatch + ' current path: ' + currentPath + ' fid ' + currentFolderId + ' total searched: ' + foldersSearched);
         log.info('getting folder by path');
         currentPath = currentPath || '';
         currentFolderId = currentFolderId || '';
@@ -320,6 +325,7 @@ class IntelligenceBank {
         }
 
         docClient.get(params, function (err_, cacheData) {
+            //if uncached
             if (err_ || !cacheData.Item || !cacheData.Item.data) {
                 self.makeHTTPCall(options)
                     .then(function (data) {
@@ -329,11 +335,14 @@ class IntelligenceBank {
                         data.folderuuid = data.folderuuid || currentFolderId;
                         var transformedFolder = self.transformFolder(undefined, data);
 
+                        //if we have arrived at our goal folder
                         if (currentPath === pathToMatch) {
                             resolve(transformedFolder);
                         } else {
+                            var found = false;
                             _.some(transformedFolder.items, function (item) {
                                 if (item.name === pathToMatch.split('/')[foldersSearched]) {
+                                    found = true;
                                     newPath = currentPath ? currentPath + '/' + item.name : item.name;
                                     self.getFolderByPath(pathToMatch, newPath, item.media_id || item.fileuuid, ++foldersSearched)
                                         .then(function (data_) {
@@ -345,6 +354,9 @@ class IntelligenceBank {
                                     return true;
                                 }
                             });
+                            if (!found) {
+                                reject('folder does not exist in subtree path ' + currentPath);
+                            }
                         }
 
                         docClient.put({TableName: 'intelligence_bank_cache', Item: {
@@ -525,7 +537,7 @@ class IntelligenceBank {
         });
 
         if (ext == null || ext === '' || assetArray.length === 0) {
-            reject('File has no extension 2');
+            reject('File has no extension');
             //throw new Error('No file extension provided.');
         }
 
@@ -539,7 +551,7 @@ class IntelligenceBank {
                     '&fileuuid=' + assetIdFromPath +
                     '&ext=' + ext +
                     (query ? '&' + query : '');
-                log.info('trying to display image from ' + resourceUrl);
+                log.info('trying to display image by path from ' + resourceUrl);
                 resolve(resourceUrl);
             })
             .catch(err => {
@@ -553,7 +565,7 @@ class IntelligenceBank {
                 '&fileuuid=' + assetId +
                 '&ext=' + ext +
                 (query ? '&' + query : '');
-            log.info('trying to display image from ' + resourceUrl);
+            log.info('trying to display image by id from ' + resourceUrl);
             resolve(resourceUrl);
         }
 
@@ -571,6 +583,7 @@ class IntelligenceBank {
             reject = reject_;
         });
 
+        log.info('retrieving folder info for asset');
         this.getFolderByPath(folderPath)
         .then(folderInfo => {
             _.some(folderInfo.items, item => {
