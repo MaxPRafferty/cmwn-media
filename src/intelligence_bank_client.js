@@ -292,8 +292,7 @@ class IntelligenceBank {
      * only be falling back to this source of truth as the cache expires.
      */
     getFolderByPath(pathToMatch, currentPath = '', currentFolderId, foldersSearched = 0) {
-        console.log('walking folders: ' + pathToMatch + ' current path: ' + currentPath + ' fid ' + currentFolderId + ' total searched: ' + foldersSearched);
-        log.info('getting folder by path');
+        log.info('walking folder tree in search of ' + pathToMatch + ', currently at ' + currentPath);
         currentPath = currentPath || '';
         currentFolderId = currentFolderId || '';
         var self = this;
