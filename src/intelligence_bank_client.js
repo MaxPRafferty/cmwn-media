@@ -586,12 +586,14 @@ class IntelligenceBank {
         log.info('retrieving folder info for asset');
         this.getFolderByPath(folderPath)
         .then(folderInfo => {
-            _.some(folderInfo.items, item => {
+            if (!_.some(folderInfo.items, item => {
                 if (item.origfilename === filename) {
                     resolve(item.media_id);
                     return true;
                 }
-            });
+            })) {
+                reject('File not found');
+            }
         })
         .catch(err => {
             reject(err);
