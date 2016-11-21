@@ -247,7 +247,6 @@ class IntelligenceBank {
                     .then(function (data) {
                         try {
                             log.info('got folder data for folder ' + options.id);
-                            log.info('full data ' + JSON.stringify(data));
                             if (data && data.folder) {
                                 // evidently data.response doesnt exist sometimes so... k.
                                 resolve(self.transformFolder(options.id, data));
