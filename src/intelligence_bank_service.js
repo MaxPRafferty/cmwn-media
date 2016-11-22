@@ -216,6 +216,6 @@ exports.getAsset = function (assetId, r) {
     ibClient.getAssetUrl(assetId).then(url => {
         r({url, tracking: ibClient.getTracking()});
     }).catch(err => {
-        r({err, status: 500});
+        r({err, status: err.status || 500});
     });
 };

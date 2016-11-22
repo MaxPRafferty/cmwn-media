@@ -201,7 +201,7 @@ class IntelligenceBank {
                         }
 
                         if (data.message != null) {
-                            throw ({status: 500, message: 'Unknown server error: ' + data.message});
+                            throw ({status: 500, message: 'Internal service error: ' + data.message});
                         }
 
                         log.info('got data');
@@ -353,7 +353,7 @@ class IntelligenceBank {
                                 }
                             });
                             if (!found) {
-                                reject('folder does not exist in subtree path ' + currentPath);
+                                reject({message: 'folder does not exist in subtree path ' + currentPath, status: 404});
                             }
                         }
 
@@ -535,7 +535,7 @@ class IntelligenceBank {
         });
 
         if (ext == null || ext === '' || assetArray.length === 0) {
-            reject('File has no extension');
+            reject({message: 'File has no extension', status: 406});
             //throw new Error('No file extension provided.');
         }
 
@@ -590,7 +590,7 @@ class IntelligenceBank {
                     return true;
                 }
             })) {
-                reject('File not found');
+                reject({message: 'File not found', status: 404});
             }
         })
         .catch(err => {
