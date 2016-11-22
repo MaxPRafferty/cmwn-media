@@ -201,7 +201,7 @@ class IntelligenceBank {
                         }
 
                         if (data.message != null) {
-                            throw ({status: 500, message: 'Internal service error: ' + data.message});
+                            throw ({status: 500, message: 'Internal service error: [0xEA7'});
                         }
 
                         log.info('got data');
