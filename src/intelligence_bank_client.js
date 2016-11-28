@@ -412,7 +412,7 @@ class IntelligenceBank {
         //very simple. If an id is provided, retrieve it directly. If a path is provided, walk the tree until it is found
         try {
             if (options.id) {
-                log.info('getting asset by id from ' + self.baseUrl + IB_PATHS.SEARCH);
+                log.info('getting asset by id');
                 self.makeHTTPCall({
                     uri: self.baseUrl + IB_PATHS.SEARCH,
                     qs: {

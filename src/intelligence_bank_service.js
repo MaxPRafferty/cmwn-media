@@ -67,7 +67,6 @@ var transformFolderToExpected = function (resourceLocationUrl, folderId, data) {
 var transformResourceToExpected = function (resourceLocationUrl, data) {
     var ext;
     var transformed = data;
-    log.info('Got resource: ' + resourceLocationUrl);
     transformed.type = 'file';
     /* eslint-disable camelcase */
     transformed.asset_type = 'item';
