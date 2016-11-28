@@ -179,8 +179,8 @@ class IntelligenceBank {
                 options.qs.p10 = self.apiKey;
                 options.qs.p20 = self.useruuid;
                 options.cookie = self.tracking;
-                try {
-                    self.httpRequest.get(options, function (err, response, data) {
+                self.httpRequest.get(options, function (err, response, data) {
+                    try {
                         if (err) {
                             log.error(err);
                             throw ({status: 500, message: 'Internal server error [0x1F5]'});
@@ -193,7 +193,7 @@ class IntelligenceBank {
 
                         if (data.message === IB_ERRORS.SILLY) {
                             log.error('', data);
-                            throw ({status: 404, message: 'Not Found'});
+                            throw {status: 404, message: 'Not Found'};
                         }
 
                         if (data.message === IB_ERRORS.LOGIN) {
@@ -205,18 +205,18 @@ class IntelligenceBank {
                         }
 
                         log.info('got data');
-                        resolve(data.response);
-                    });
-                } catch(err) {
-                    if (!options.forceLogin) {
-                        log.info('Request failed for reason: ' + err + '. Cached login information expired. Retrying with explicit login');
-                        options.forceLogin = true;
-                        self.makeHTTPCall(options).then(result => resolve(result)).catch(err_ => reject(err_));
-                    } else {
-                        log.error(err);
-                        reject(err);
+                        resolve(data.response || data);
+                    } catch(error) {
+                        if (!options.forceLogin) {
+                            log.info('Request failed for reason: ' + error.message + '. Cached login information expired. Retrying with explicit login');
+                            options.forceLogin = true;
+                            self.makeHTTPCall(options).then(result => resolve(result)).catch(err_ => reject(err_));
+                        } else {
+                            log.error(error);
+                            reject(error);
+                        }
                     }
-                }
+                });
             }
         ); });
     }
@@ -397,6 +397,7 @@ class IntelligenceBank {
 
         return folder;
     }
+
     getAssetInfo(options) {
         //this.getAssetFromTree(options);
         var self = this;
@@ -456,6 +457,7 @@ class IntelligenceBank {
         }
         return file;
     }
+
     /**
      * getAssetFromTree
      * There is some definite weirdness with the IB API. Namely, they seem to hate returning identities.
@@ -520,6 +522,7 @@ class IntelligenceBank {
             });
         return folder;
     }
+
     getAssetUrl(file) {
         var assetId = file.split('?')[0];
         var assetArray = assetId.split('.');
@@ -569,6 +572,7 @@ class IntelligenceBank {
 
         return asset;
     }
+
     getAssetIdByPath(path) {
         var folderPath = path.split('/');
         var filename = folderPath.pop();
@@ -599,6 +603,7 @@ class IntelligenceBank {
 
         return assetId;
     }
+
     getTracking() {
         return this.tracking;
     }
