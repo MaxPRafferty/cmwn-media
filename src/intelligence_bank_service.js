@@ -42,8 +42,9 @@ var transformFolderToExpected = function (resourceLocationUrl, folderId, data) {
     transformed.items = transformed.items.concat(_.map(data.resource || [], function (item) {
         return transformResourceToExpected(resourceLocationUrl, item);
     }));
-    transformed.items = transformed.items.concat(_.map(transformed.folder, function (item) {
+    transformed.items = transformed.items.concat(_.map(transformed.folder, function (item, orderKey) {
         var transform = transformFolderToExpected(resourceLocationUrl, item.folderuuid, item);
+        transform.order = transform.order || 100 + orderKey;
         return transform;
     }));
 
@@ -65,13 +66,16 @@ var transformFolderToExpected = function (resourceLocationUrl, folderId, data) {
 };
 
 var transformResourceToExpected = function (resourceLocationUrl, data) {
-    var ext;
+    var ext = '';
     var transformed = data;
+    if (transformed.file) {
+        transformed = _.defaults(transformed, transformed.file);
+    }
     transformed.type = 'file';
     /* eslint-disable camelcase */
     transformed.asset_type = 'item';
     /* eslint-enable camelcase */
-    transformed.order = transformed.sortorder;
+    transformed.order = transformed.sortorder || 1;
     transformed.check = {
         type: transformed.filehash,
         value: 'md5'
@@ -84,10 +88,15 @@ var transformResourceToExpected = function (resourceLocationUrl, data) {
         ext = transformed.origfilename.split('.').pop();
         transformed.ext = ext;
     }
+    if (transformed.ext) {
+        ext = transformed.ext;
+    }
     transformed.src = resourceLocationUrl + transformed.media_id + '.' + ext;
     transformed.thumb = resourceLocationUrl + transformed.media_id + '.' + ext + '&compressiontype=2&size=25';
 
     data.tags = data.tags || [];
+
+    transformed.mime_type = transformed.mime_type || transformed.mimetype;// eslint-disable-line camelcase
 
     data.tags.forEach(tag => {
         if (tag.indexOf('asset_type') === 0) {
@@ -105,10 +114,13 @@ var transformResourceToExpected = function (resourceLocationUrl, data) {
     // I will go over why dynamo cannot have empty values - MC
     transformed = stripEmptyValuesDeep(transformed);
 
+    delete transformed.file;
+    delete transformed.data;
     delete transformed.filehash;
     delete transformed.resourceuuid;
     delete transformed.sortorder;
     delete transformed.versions;
+    delete transformed.mimetype;
 
     return transformed;
 };
