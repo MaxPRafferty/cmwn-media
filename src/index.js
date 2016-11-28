@@ -113,8 +113,11 @@ app.get(/^\/a\/{0,1}(.+)?/i, function (req, res) {
             res.status(data && data.status || 404).send();
         }
     }).catch(err => {
+        var status = err.status || 500;
+        var message = err.message || 'Server Error [0x339]';
+        console.log('asset with provided details could not be found');
         rollbar.reportMessageWithPayloadData('Error when trying to serve asset', {error: err, request: req});
-        res.status(500).send({ error: 'Something failed!' });
+        res.status(status).send({ message, status });
     });
 
     docClient.get(params, function (err, data) {

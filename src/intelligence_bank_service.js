@@ -199,7 +199,7 @@ exports.getAssetInfo = function (assetId, resolve, reject) {
                 .then(success)
                 .catch(function (folderError) {
                     log.error('error when requesting folder information', folderError);
-                    reject('ERROR: 500. Details: ' + folderError);
+                    reject(folderError);
                 });
         });
 };
