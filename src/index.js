@@ -178,6 +178,10 @@ app.get('/f/*', function (req, res) {
                 .on('response', function (response) {
                     var extension;
                     var mimeType;
+                    if (response.statusCode !== 200) {
+                        res.status(500).send({error: 'File could not be returned'});
+                        return;
+                    }
                     response.headers['cache-control'] = 'public, max-age=604800';
                     extension = response.headers['content-disposition'].split('.')[1].toLowerCase().replace('"', '');
                     mimeType = mime.lookup(extension);
