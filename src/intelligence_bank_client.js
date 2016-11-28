@@ -200,6 +200,10 @@ class IntelligenceBank {
                             throw ({status: 401, message: 'Invalid Login. User not authorized'});
                         }
 
+                        if (data.message != null) {
+                            throw ({status: 500, message: 'Internal service error: [0xEA7'});
+                        }
+
                         log.info('got data');
                         resolve(data.response);
                     });
@@ -243,7 +247,6 @@ class IntelligenceBank {
                     .then(function (data) {
                         try {
                             log.info('got folder data for folder ' + options.id);
-                            log.info('full data ' + JSON.stringify(data));
                             if (data && data.folder) {
                                 // evidently data.response doesnt exist sometimes so... k.
                                 resolve(self.transformFolder(options.id, data));
@@ -288,8 +291,8 @@ class IntelligenceBank {
      * service will be caching everything by both path and ID, however, so we will
      * only be falling back to this source of truth as the cache expires.
      */
-    getFolderByPath(pathToMatch, currentPath, currentFolderId, foldersSearched = 0) {
-        log.info('getting folder by path');
+    getFolderByPath(pathToMatch, currentPath = '', currentFolderId, foldersSearched = 0) {
+        log.info('walking folder tree in search of ' + pathToMatch + ', currently at ' + currentPath);
         currentPath = currentPath || '';
         currentFolderId = currentFolderId || '';
         var self = this;
@@ -320,6 +323,7 @@ class IntelligenceBank {
         }
 
         docClient.get(params, function (err_, cacheData) {
+            //if uncached
             if (err_ || !cacheData.Item || !cacheData.Item.data) {
                 self.makeHTTPCall(options)
                     .then(function (data) {
@@ -329,11 +333,14 @@ class IntelligenceBank {
                         data.folderuuid = data.folderuuid || currentFolderId;
                         var transformedFolder = self.transformFolder(undefined, data);
 
+                        //if we have arrived at our goal folder
                         if (currentPath === pathToMatch) {
                             resolve(transformedFolder);
                         } else {
+                            var found = false;
                             _.some(transformedFolder.items, function (item) {
                                 if (item.name === pathToMatch.split('/')[foldersSearched]) {
+                                    found = true;
                                     newPath = currentPath ? currentPath + '/' + item.name : item.name;
                                     self.getFolderByPath(pathToMatch, newPath, item.media_id || item.fileuuid, ++foldersSearched)
                                         .then(function (data_) {
@@ -345,6 +352,9 @@ class IntelligenceBank {
                                     return true;
                                 }
                             });
+                            if (!found) {
+                                reject({message: 'folder does not exist in subtree path ' + currentPath, status: 404});
+                            }
                         }
 
                         docClient.put({TableName: 'intelligence_bank_cache', Item: {
@@ -524,6 +534,11 @@ class IntelligenceBank {
             reject = reject_;
         });
 
+        if (ext == null || ext === '' || assetArray.length === 0) {
+            reject({message: 'File has no extension', status: 406});
+            //throw new Error('No file extension provided.');
+        }
+
         if (assetId !== '0' && (assetId.indexOf('/') !== -1 || assetId.length !== 32)) {
             this.getAssetIdByPath(assetId + '.' + ext)
             .then(assetIdFromPath => {
@@ -534,7 +549,7 @@ class IntelligenceBank {
                     '&fileuuid=' + assetIdFromPath +
                     '&ext=' + ext +
                     (query ? '&' + query : '');
-                log.info('trying to display image from ' + resourceUrl);
+                log.info('trying to display image by path from ' + resourceUrl);
                 resolve(resourceUrl);
             })
             .catch(err => {
@@ -548,7 +563,7 @@ class IntelligenceBank {
                 '&fileuuid=' + assetId +
                 '&ext=' + ext +
                 (query ? '&' + query : '');
-            log.info('trying to display image from ' + resourceUrl);
+            log.info('trying to display image by id from ' + resourceUrl);
             resolve(resourceUrl);
         }
 
@@ -566,14 +581,17 @@ class IntelligenceBank {
             reject = reject_;
         });
 
+        log.info('retrieving folder info for asset');
         this.getFolderByPath(folderPath)
         .then(folderInfo => {
-            _.some(folderInfo.items, item => {
+            if (!_.some(folderInfo.items, item => {
                 if (item.origfilename === filename) {
                     resolve(item.media_id);
                     return true;
                 }
-            });
+            })) {
+                reject({message: 'File not found', status: 404});
+            }
         })
         .catch(err => {
             reject(err);
