@@ -81,7 +81,10 @@ var transformResourceToExpected = function (resourceLocationUrl, data) {
     transformed.media_id = data.resourceuuid || data.uuid;
     /* eslint-enable camelcase */
     transformed.name = data.title;
-    ext = transformed.origfilename.split('.').pop();
+    if (transformed.origfilename) {
+        ext = transformed.origfilename.split('.').pop();
+        transformed.ext = ext;
+    }
     transformed.src = resourceLocationUrl + transformed.media_id + '.' + ext;
     transformed.thumb = resourceLocationUrl + transformed.media_id + '.' + ext + '&compressiontype=2&size=25';
 
@@ -140,7 +143,7 @@ exports.init = function () {
                 platformUrl: config.platformUrl,
                 ownUrl: config.host,
                 onConnect: function (data_) {
-                    log.info('success, storing: ' + JSON.stringify(data_));
+                    log.info('success, caching data');
                     //store in dynamo
                     docClient.put({TableName: 'intelligence_bank_keys', Item: {
                         'key_name': 'apiKey',
@@ -186,7 +189,6 @@ exports.getAssetInfo = function (assetId, resolve, reject) {
     //is to check both. One call will always fail, one will always succeed.
 
     var success = function (data_) {
-        log.info('here 8000');
         data_.id = data_.media_id || data_.uuid;
         resolve(data_);
     };

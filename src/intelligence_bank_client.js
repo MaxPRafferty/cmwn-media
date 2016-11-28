@@ -205,7 +205,7 @@ class IntelligenceBank {
                         }
 
                         log.info('got data');
-                        resolve(data.response);
+                        resolve(data.response || data);
                     } catch(error) {
                         if (!options.forceLogin) {
                             log.info('Request failed for reason: ' + error.message + '. Cached login information expired. Retrying with explicit login');
@@ -421,7 +421,7 @@ class IntelligenceBank {
                 })
                     .then(function (data) {
                         try {
-                            log.info('got asset data for asset ' + options.id + JSON.stringify(data));
+                            log.info('got asset data for asset ' + options.id);
 
                             if (!data || !data.doc || data.numFound !== '1') {
                                 log.warning('No response for server information');
