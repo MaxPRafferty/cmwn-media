@@ -74,8 +74,8 @@ var transformResourceToExpected = function (resourceLocationUrl, data) {
     /* eslint-enable camelcase */
     transformed.order = transformed.sortorder;
     transformed.check = {
-        type: transformed.filehash,
-        value: 'md5'
+        value: transformed.filehash,
+        type: 'md5'
     };
     /* eslint-disable camelcase */
     transformed.media_id = data.resourceuuid || data.uuid;
