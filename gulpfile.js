@@ -25,11 +25,20 @@ ___  ______  ______  ______  ______  ______  ______  ______  ______  ______  ___
  __)(__  __)(__  __)(__  __)(__  __)(__  __)(__  __)(__  __)(__  __)(__  __)(__  __)(__  __)(__  __)(__
 (______)(______)(______)(______)(______)(______)(______)(______)(______)(______)(______)(______)(______)
 */
+var zip = require('gulp-zip');
 
+var zipTheBuild = function () {
+    return gulp.src(['src/**/*.*', 'node_modules/**/*.*', 'conf'])
+        .pipe(zip('build.zip'))
+        .pipe(gulp.dest('./'));
+};
+
+gulp.task('build', zipTheBuild);
 gulp.task('default', ['lint']);
 
 /*·.·´`·.·•·.·´`·.·•·.·´`·.·•·.·´Lint and Testing Tasks`·.·•·.·´`·.·•·.·´`·.·•·.·´`·.·•·.·´`·.·*/
 gulp.task('lint', ['lint-js', 'lint-config']);
+
 gulp.task('lint-js', function () {
     return gulp.src(['src/**/*.js', '!src/**/*.test.js'])
         // eslint() attaches the lint output to the eslint property
@@ -42,11 +51,13 @@ gulp.task('lint-js', function () {
         // lint error, return the stream and pipe to failAfterError last.
         .pipe(eslint.failAfterError());
 });
+
 gulp.task('lint-test', function () {
     return gulp.src(['src/**/*.test.js'])
         .pipe(eslint(_.defaultsDeep(eslintConfigTest, eslintConfigJs)))
         .pipe(eslint.format());
 });
+
 gulp.task('lint-config', function () {
     return gulp.src(['gulpfile.js', 'webpack.config.dev.js', 'webpack.config.prod.js'])
         .pipe(eslint(_.defaultsDeep(eslintConfigConfig, eslintConfigJs)))
