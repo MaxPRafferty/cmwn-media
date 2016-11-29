@@ -35,6 +35,6 @@ echo "bastion $bastion"
 scp -i "$key" "$filepath" "ec2-user@$bastion:/home/ec2-user/"
 ssh "ec2-user@$bastion" -i "$key" << HERE
     scp "$(basename $filepath)" "$server:/home/ec2-user/"
-    ssh "$server" "sudo tar -xzf $(basename $filepath) -C /var/www/ -strip-components=1 && sudo forever restart media_api && sudo forever list"
+    ssh "$server" "sudo tar -xzf $(basename $filepath) -C /var/www/ --strip-components=1 && sudo forever restart media_api && sudo forever list"
 HERE
 
