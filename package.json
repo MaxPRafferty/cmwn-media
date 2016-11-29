@@ -21,6 +21,7 @@
     "box-sdk": "0.0.6",
     "connect-timeout": "^1.7.0",
     "express": "^4.13.4",
+    "gulp-zip": "^3.2.0",
     "js2xmlparser": "^1.0.0",
     "lodash": "^4.13.1",
     "log": "^1.4.0",
