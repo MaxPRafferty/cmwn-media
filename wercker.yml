@@ -4,7 +4,7 @@ build:
   steps:
     - script:
       name: Install packages
-      code: npm prune && npm install && tar cf $WERCKER_CACHE_DIR/nm_cache.tar node_modules
+      code: npm prune && npm install --no-dev && tar cf $WERCKER_CACHE_DIR/nm_cache.tar node_modules
     - script:
       name: Linter
       code: gulp lint
@@ -66,17 +66,6 @@ draft-release:
       bucket-url: $AWS_BUCKET_URL
       source-dir: artifact/
       delete-removed: false
-    - github-create-release:
-      name: Creating release on github
-      token: $MC_GITHUB_TOKEN
-      tag: $VERSION
-      draft: true
-    - github-upload-asset:
-      name: Adding build artifact to tag
-      token: $MC_GITHUB_TOKEN
-      tag: $VERSION
-      file: artifact/media-$VERSION.zip
-      filename: media-$VERSION.zip
 
 deploy-draft:
   box:
