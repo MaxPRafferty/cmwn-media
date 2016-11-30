@@ -1,0 +1,111 @@
+box:
+  id: cmwn/front-node:6-wheezy
+build:
+  steps:
+    - script:
+      name: Install packages
+      code: npm prune && npm install --no-dev && tar cf $WERCKER_CACHE_DIR/nm_cache.tar node_modules
+    - script:
+      name: Linter
+      code: gulp lint
+    - script:
+      name: Build
+      code: gulp build
+  after-steps:
+    - slack-notifier:
+      url: $SLACK_URL
+
+release:
+  box: python:2.7
+  steps:
+    - script:
+      name: Preparing release
+      code: |-
+        export VERSION="$($PWD/bin/version_bump.sh --print-current)"
+        echo "$VERSION"
+        mkdir -p artifact
+        mv build.zip artifact/media-$VERSION.zip
+        ls -al artifact/media-$VERSION.zip
+        echo "Changed file name"
+    - s3sync:
+      name: Uploading package to Amazon S3
+      key-id: $AWS_ACCESS_KEY_ID
+      key-secret: $AWS_SECRET_ACCESS_KEY
+      bucket-url: $AWS_BUCKET_URL
+      source-dir: artifact/
+      delete-removed: false
+    - github-create-release:
+      name: Creating release on github
+      token: $MC_GITHUB_TOKEN
+      tag: $VERSION
+      draft: false
+    - github-upload-asset:
+      name: Adding build artifact to tag
+      token: $MC_GITHUB_TOKEN
+      tag: $VERSION
+      file: artifact/media-$VERSION.zip
+      filename: media-$VERSION.zip
+
+draft-release:
+  box: python:2.7
+  steps:
+    - script:
+      name: Preparing release
+      code: |-
+        export SHORT_HASH=$(git log -n 1 --abbrev-commit | head -n 1 | sed -e 's/^commit //')
+        export VERSION="$($PWD/bin/version_bump.sh --print-current)-$SHORT_HASH"
+        echo "$VERSION"
+        mkdir -p artifact
+        mv build.zip artifact/media-$VERSION.zip
+        ls -al artifact/media-$VERSION.zip
+        echo "Changed file name"
+    - s3sync:
+      name: Uploading package to Amazon S3
+      key-id: $AWS_ACCESS_KEY_ID
+      key-secret: $AWS_SECRET_ACCESS_KEY
+      bucket-url: $AWS_BUCKET_URL
+      source-dir: artifact/
+      delete-removed: false
+
+deploy-draft:
+  box:
+    id: cmwn/python
+    username: $DOCKER_USER
+    password: $DOCKER_PASS
+    entrypoint: /bin/bash -c
+  steps:
+    - script:
+      name: Preparing release
+      code: |-
+        export SHORT_HASH=$(git log -n 1 --abbrev-commit | head -n 1 | sed -e 's/^commit //')
+        export VERSION="$($PWD/bin/version_bump.sh --print-current)-$SHORT_HASH"
+        echo "$VERSION"
+    - script:
+      name: Running deploy
+      code: |-
+        echo "Deploying $DEPLOY_APP_NAME @ $VERSION to $DEPLOY_ENV"
+        python /deploy.py $VERSION $DEPLOY_APP_NAME $DEPLOY_ENV -v
+  after-steps:
+    - slack-notifier:
+      url: $SLACK_URL
+
+deploy:
+  box:
+    id: cmwn/python
+    username: $DOCKER_USER
+    password: $DOCKER_PASS
+    entrypoint: /bin/bash -c
+  steps:
+    - script:
+      name: Preparing release
+      code: |-
+        export VERSION="$($PWD/bin/version_bump.sh --print-current)"
+        echo "$VERSION"
+    - script:
+      name: Running deploy
+      code: |-
+        echo "Deploying $DEPLOY_APP_NAME @ $VERSION to $DEPLOY_ENV"
+        python /deploy.py $VERSION $DEPLOY_APP_NAME $DEPLOY_ENV -v
+  after-steps:
+    - slack-notifier:
+      url: $SLACK_URL
