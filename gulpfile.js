@@ -5,6 +5,7 @@ var eslintConfigJs = JSON.parse(fs.readFileSync('./.eslintrc'));
 var eslintConfigTest = JSON.parse(fs.readFileSync('./.eslintrc_test'));
 var eslintConfigConfig = JSON.parse(fs.readFileSync('./.eslintrc_config'));
 var _ = require('lodash');
+var zip = require('gulp-zip');
 
 /*
 ___  ______  ______  ______  ______  ______  ______  ______  ______  ______  ______  ______  ______  ___
@@ -25,15 +26,31 @@ ___  ______  ______  ______  ______  ______  ______  ______  ______  ______  ___
  __)(__  __)(__  __)(__  __)(__  __)(__  __)(__  __)(__  __)(__  __)(__  __)(__  __)(__  __)(__  __)(__
 (______)(______)(______)(______)(______)(______)(______)(______)(______)(______)(______)(______)(______)
 */
-var zip = require('gulp-zip');
+
 
 var zipTheBuild = function () {
-    return gulp.src(['src/**/*.*', 'node_modules/**/*.*', 'conf'])
+    return gulp.src(['build/**/*.*'])
         .pipe(zip('build.zip'))
         .pipe(gulp.dest('./'));
 };
 
-gulp.task('build', zipTheBuild);
+gulp.task('copy-config', function () {
+    'use strict';
+    return gulp.src(['conf/**/*.*']).pipe(gulp.dest('./build/conf'));
+});
+
+gulp.task('copy-modules', function () {
+    'use strict';
+    return gulp.src(['node_modules/**/*.*']).pipe(gulp.dest('./build/node_modules'));
+});
+
+gulp.task('copy-source', function () {
+    'use strict';
+    return gulp.src(['src/**/*.*']).pipe(gulp.dest('./build/src'));
+});
+
+
+gulp.task('build', ['copy-config', 'copy-modules', 'copy-source'], zipTheBuild);
 gulp.task('default', ['lint']);
 
 /*·.·´`·.·•·.·´`·.·•·.·´`·.·•·.·´Lint and Testing Tasks`·.·•·.·´`·.·•·.·´`·.·•·.·´`·.·•·.·´`·.·*/
