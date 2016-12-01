@@ -39,12 +39,6 @@ release:
       token: $MC_GITHUB_TOKEN
       tag: $VERSION
       draft: false
-    - github-upload-asset:
-      name: Adding build artifact to tag
-      token: $MC_GITHUB_TOKEN
-      tag: $VERSION
-      file: artifact/media-$VERSION.zip
-      filename: media-$VERSION.zip
 
 draft-release:
   box: python:2.7
