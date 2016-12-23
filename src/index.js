@@ -145,6 +145,16 @@ app.get('/f/*', function (req, res) {
     log.debug(req.url);
     log.debug(req.params);
 
+    var s3StoreFound = false;
+    var key = '';
+
+    var s3Bucket = 'cmwn-media-store';
+
+    var s3 = new AWS.S3({
+        apiVersion: '2006-03-01',
+        params: {Bucket: s3Bucket}
+    });
+
     var assetId = req.params[0] || '0';
     log.debug('Asset Id: ' + assetId);
 
@@ -154,13 +164,13 @@ app.get('/f/*', function (req, res) {
     }
 
     var r;
-    var p = new Promise(resolve => {
-        r = data => {
-            resolve(data);
-        };
+    var rej;
+    var p = new Promise((resolve, reject) => {
+        r = resolve;
+        rej = reject;
     });
 
-    p.then((data, err, err2) => {
+    var retrieveAsset = function (data, err, err2) {
         log.debug(data);
         log.debug(err);
         log.debug(err2);
@@ -173,36 +183,103 @@ app.get('/f/*', function (req, res) {
             request
                 .get({
                     url: data.url,
-                    headers: { Cookie: data.tracking }
-                })
-                .on('response', function (response) {
+                    encoding: null,
+                    headers: { Cookie: data.tracking || '' }
+                }, function (e, response, body) {
                     var extension;
                     var mimeType;
-                    if (response.statusCode !== 200) {
-                        res.status(500).send({error: 'File could not be returned'});
-                        return;
+                    if (!e && response.statusCode === 200 && (body.length > 50 || !~body.indexOf('estimatedFileSize'))) {
+                        //store file result in s3
+                        s3.upload({
+                            Key: req.get('host') + '/' + req.originalUrl.slice(3), //slice off the /f/ at the front of all requests
+                            Body: body,
+                            ACL: 'public-read'
+                        }, function (err_) {
+                            if (err_) {
+                                log.error('There was an error uploading your photo: ' + err_.message);
+                            }
+                            log.info('Successfully uploaded photo.');
+                        });
+
+                        try {
+                            if (response.statusCode !== 200) {
+                                res.status(500).send({error: 'File could not be returned'});
+                                return;
+                            }
+                            res.set('cache-control', 'public, max-age=604800');
+                            if (response.headers['content-disposition']) {
+                                extension = response.headers['content-disposition'].split('.')[1].toLowerCase().replace('"', '');
+                                mimeType = mime.lookup(extension);
+                            }
+                            if (!mimeType) {
+                                mimeType = 'image/png';
+                            }
+                            res.set('content-type', mimeType);
+                            res.contentType(mimeType);
+                            res.set('etag', crypto.createHash('md5').update(data.url).digest('hex'));
+                        } catch(error) {
+                            console.warn('Some content headers could not be set. Attempting to return asset. Reason: ' + error);
+                        }
+
+                        res.set('content-disposition', 'inline;');
+                        res.send(body);
+                    } else {
+                        if (s3StoreFound) {
+                            //ignore errors if we have a cached copy
+                            retrieveAsset({url: 'https://s3.amazonaws.com/' + s3Bucket + '/' + key });
+                        } else if (e) {
+                            log.error('Server error [0xf07]: ');
+                            res.contentType('application/json');
+                            res.status(500).send({error: 'Server error [0xf07]'});
+                        } else {
+                            res.contentType('application/json');
+                            res.status(404).send({error: 'File not Found'});
+                        }
                     }
-                    response.headers['cache-control'] = 'public, max-age=604800';
-                    extension = response.headers['content-disposition'].split('.')[1].toLowerCase().replace('"', '');
-                    mimeType = mime.lookup(extension);
-                    if (!mimeType) {
-                        mimeType = 'image/png';
-                    }
-                    response.headers['content-type'] = mimeType;
-                    res.contentType(mimeType);
-                    response.headers['content-disposition'] = 'inline;';
-                    response.headers.etag = crypto.createHash('md5').update(data.url).digest('hex');
-                    return response;
-                }).pipe(res);
+                });
         } else {
             res.status(data && data.status || 404).send();
         }
-    }).catch(err => {
+    };
+
+
+    //initially, check if we have a valid stored file to send back
+    s3.listObjects({Prefix: req.get('host')}, function (err_, data_) { //remove /f/
+        var now = new Date(Date.now());
+        var expires = now;
+        var searchKey = req.get('host') + '/' + req.originalUrl.slice(3);
+        now.setHours(now.getHours());
+        data_.Contents.map(function (photo) {
+            if (photo.Key === searchKey) {
+                s3StoreFound = true;
+                key = photo.Key;
+                expires = new Date(Date.parse(photo.LastModified));
+                expires.setHours(expires.getHours() + CACHE_EXPIRY);
+            }
+        });
+        //until we have the update service, these need to expire after a day
+        //however, we dont want to delete them and make them unavailable, so
+        //we want to fall back to the s3 version even if it is expired
+        if (s3StoreFound && now < expires) {
+            r({url: 'https://s3.amazonaws.com/' + s3Bucket + '/' + key });
+        } else {
+            service.getAsset(assetId + query, r, function () {
+                if (s3StoreFound) {
+                    log.info('image unavailable from service, falling back to s3 store copy');
+                    r({url: 'https://s3.amazonaws.com/' + s3Bucket + '/' + key });
+                } else {
+                    rej.apply(this, arguments);
+                }
+            });
+        }
+    });
+
+    //after file has been retrieved
+    p.then(retrieveAsset).catch(err => {
         rollbar.reportMessageWithPayloadData('Error when trying to serve asset', {error: err, request: req});
         res.status(500).send({ error: 'Something failed!' });
     });
 
-    service.getAsset(assetId + query, r);
 });
 
 // ping the service (used for health checks

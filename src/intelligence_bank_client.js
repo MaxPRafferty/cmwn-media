@@ -339,9 +339,11 @@ class IntelligenceBank {
                         } else {
                             var found = false;
                             _.some(transformedFolder.items, function (item) {
+                                console.log('name ' + item.name);
                                 if (item.name === pathToMatch.split('/')[foldersSearched]) {
                                     found = true;
                                     newPath = currentPath ? currentPath + '/' + item.name : item.name;
+                                    console.log('found ' + newPath);
                                     self.getFolderByPath(pathToMatch, newPath, item.media_id || item.fileuuid, ++foldersSearched)
                                         .then(function (data_) {
                                             resolve(data_); //again, no need to double transform
