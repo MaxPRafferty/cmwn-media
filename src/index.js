@@ -121,7 +121,7 @@ app.get(/^\/a\/{0,1}(.+)?/i, function (req, res) {
     });
 
     docClient.get(params, function (err, data) {
-        if (err || !Object.keys(data).length || cliArgs.n || cliArgs.nocache) {
+        if (err || !Object.keys(data).length || cliArgs.n || cliArgs.nocache, req.query.bust != null) {
             log.debug('No cache data for', data);
             service.getAssetInfo(assetId, assetResolve, assetReject);
         } else {
@@ -189,18 +189,6 @@ app.get('/f/*', function (req, res) {
                     var extension;
                     var mimeType;
                     if (!e && response.statusCode === 200 && (body.length > 50 || !~body.indexOf('estimatedFileSize'))) {
-                        //store file result in s3
-                        s3.upload({
-                            Key: req.get('host') + '/' + req.originalUrl.slice(3), //slice off the /f/ at the front of all requests
-                            Body: body,
-                            ACL: 'public-read'
-                        }, function (err_) {
-                            if (err_) {
-                                log.error('There was an error uploading your photo: ' + err_.message);
-                            }
-                            log.info('Successfully uploaded photo.');
-                        });
-
                         try {
                             if (response.statusCode !== 200) {
                                 res.status(500).send({error: 'File could not be returned'});
@@ -220,6 +208,21 @@ app.get('/f/*', function (req, res) {
                         } catch(error) {
                             console.warn('Some content headers could not be set. Attempting to return asset. Reason: ' + error);
                         }
+
+                        //don't waste the user's time storing before the asset has been returned
+                        setTimeout(function () {
+                            //store file result in s3
+                            s3.upload({
+                                Key: req.get('host') + '/' + req.path.slice(3), //slice off the /f/ at the front of all requests
+                                Body: body,
+                                ACL: 'public-read'
+                            }, function (err_) {
+                                if (err_) {
+                                    log.error('There was an error uploading your photo: ' + err_.message);
+                                }
+                                log.info('Successfully uploaded photo.');
+                            });
+                        }, 500);
 
                         res.set('content-disposition', 'inline;');
                         res.send(body);
@@ -242,12 +245,11 @@ app.get('/f/*', function (req, res) {
         }
     };
 
-
     //initially, check if we have a valid stored file to send back
     s3.listObjects({Prefix: req.get('host')}, function (err_, data_) { //remove /f/
         var now = new Date(Date.now());
         var expires = now;
-        var searchKey = req.get('host') + '/' + req.originalUrl.slice(3);
+        var searchKey = req.get('host') + '/' + req.path.slice(3);
         now.setHours(now.getHours());
         data_.Contents.map(function (photo) {
             if (photo.Key === searchKey) {
@@ -260,9 +262,10 @@ app.get('/f/*', function (req, res) {
         //until we have the update service, these need to expire after a day
         //however, we dont want to delete them and make them unavailable, so
         //we want to fall back to the s3 version even if it is expired
-        if (s3StoreFound && now < expires) {
+        if (s3StoreFound && req.query.bust == null && now < expires) {
             r({url: 'https://s3.amazonaws.com/' + s3Bucket + '/' + key });
         } else {
+            log.info('skipping s3');
             service.getAsset(assetId + query, r, function () {
                 if (s3StoreFound) {
                     log.info('image unavailable from service, falling back to s3 store copy');
