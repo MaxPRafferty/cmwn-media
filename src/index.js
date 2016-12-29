@@ -1,6 +1,5 @@
 var _ = require('lodash');
 var Log = require('log');
-var log = new Log('info');
 var rollbar = require('rollbar');
 var express = require('express');
 var app = express();
@@ -10,6 +9,7 @@ var mime = require('mime-types');
 var AWS = require('aws-sdk');
 var timeout = require('connect-timeout');
 var cliArgs = require('optimist').argv;
+var log = new Log((cliArgs.d || cliArgs.debug) ? 'debug' : 'info');
 
 var Util = require('./util.js');
 var service = require('./intelligence_bank_service.js');
@@ -315,5 +315,5 @@ app.use(rollbar.errorHandler(rollbarKeys.token, rollbarOpts));
 app.listen(3000, function () {
     //service.init(storage);
     service.init();
-    log.debug('Example app listening on port 3000!');
+    log.debug('App listening on port 3000!');
 });
