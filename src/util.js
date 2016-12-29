@@ -25,9 +25,10 @@ var Utils = {
         var paramlessS3Path = s3Path.split('?');
         var splitParams;
         var finalSegment;
+        var result;
 
         if (~s3Path.indexOf('?')) {
-            existingParams = paramlessS3Path.pop();
+            existingParams = paramlessS3Path.pop() + '&';
         }
 
         paramlessS3Path = paramlessS3Path.join('?');
@@ -44,7 +45,13 @@ var Utils = {
             path = splitParams.shift();
         }
 
-        return path + '.' + extension + _.reduce(splitParams, v => v.split('__').join('=') + '&', '?' + existingParams + '&');
+        result = path + '.' + extension + _.reduce(splitParams, (acc, v) => acc + v.split('__').join('=') + '&', '?' + existingParams);
+
+        //strip any trailing ampersands
+        while (result.split('').pop() === '&') {
+            result = result.slice(0, -1);
+        }
+        return result;
 
     }
 };

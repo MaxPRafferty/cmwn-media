@@ -117,7 +117,7 @@ app.get(/^\/a\/{0,1}(.+)?/i, function (req, res) {
     }).catch(err => {
         var status = err.status || 500;
         var message = err.message || 'Server Error [0x339]';
-        console.log('asset with provided details could not be found');
+        log.info('asset with provided details could not be found');
         rollbar.reportMessageWithPayloadData('Error when trying to serve asset', {error: err, request: req});
         res.status(status).send({ message, status });
     });
@@ -185,7 +185,7 @@ app.get('/f/*', function (req, res) {
             url = data.url;
             url = url.split('').pop() !== '&' ? url : url.slice(0, -1);
             res.contentType('image/png');
-            console.log('making request ' + Util.transformS3ParamEncodedToQueried(data.url) + ' with cookie ' + data.tracking);
+            log.info('making request ' + url + ' with cookie ' + data.tracking);
             request
                 .get({
                     url,
@@ -212,7 +212,7 @@ app.get('/f/*', function (req, res) {
                             res.contentType(mimeType);
                             res.set('etag', crypto.createHash('md5').update(data.url).digest('hex'));
                         } catch(error) {
-                            console.warn('Some content headers could not be set. Attempting to return asset. Reason: ' + error);
+                            log.error('Some content headers could not be set. Attempting to return asset. Reason: ' + error);
                         }
 
                         //don't waste the user's time storing before the asset has been returned
@@ -277,11 +277,12 @@ app.get('/f/*', function (req, res) {
         //until we have the update service, these need to expire after a day
         //however, we dont want to delete them and make them unavailable, so
         //we want to fall back to the s3 version even if it is expired
-        if (s3StoreFound && req.query.bust == null && now < expires) {
+        log.info('asset found in s3?: ' + s3StoreFound);
+        if (s3StoreFound && req.query.bust == null && cliArgs.n == null && cliArgs.nocache == null && now < expires) {
             r({url: 'https://s3.amazonaws.com/' + s3Bucket + '/' + key });
         } else {
             log.info('skipping s3');
-            service.getAsset(assetId + query, r, function () {
+            service.getAsset(Util.transformS3ParamEncodedToQueried(assetId + query), r, function () {
                 if (s3StoreFound) {
                     log.info('image unavailable from service, falling back to s3 store copy');
                     r({url: 'https://s3.amazonaws.com/' + s3Bucket + '/' + key });
