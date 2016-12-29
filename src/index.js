@@ -7,12 +7,14 @@ var app = express();
 var request = require('request');
 var crypto = require('crypto');
 var mime = require('mime-types');
-var service = require('./intelligence_bank_service.js');
-var IntelligenceBankConfig = require('../conf/intelligence_bank_config.json');
-var rollbarKeys = require('../conf/rollbar.json');
 var AWS = require('aws-sdk');
 var timeout = require('connect-timeout');
 var cliArgs = require('optimist').argv;
+
+var Util = require('./util.js');
+var service = require('./intelligence_bank_service.js');
+var IntelligenceBankConfig = require('../conf/intelligence_bank_config.json');
+var rollbarKeys = require('../conf/rollbar.json');
 
 AWS.config.loadFromPath('./conf/aws.json');
 var docClient = new AWS.DynamoDB.DocumentClient();
@@ -144,6 +146,7 @@ app.get('/f/*', function (req, res) {
 
     log.debug(req.url);
     log.debug(req.params);
+    var isFallbackAttempt = false;
 
     var s3StoreFound = false;
     var key = '';
@@ -159,8 +162,8 @@ app.get('/f/*', function (req, res) {
     log.debug('Asset Id: ' + assetId);
 
     var query = '';
-    if (~req.url.indexOf('?')) {
-        query = '?' + req.url.split('?')[1];
+    if (~Util.transformS3ParamEncodedToQueried(req.url).indexOf('?')) {
+        query = '?' + Util.transformS3ParamEncodedToQueried(req.url).split('?')[1];
     }
 
     var r;
@@ -171,6 +174,7 @@ app.get('/f/*', function (req, res) {
     });
 
     var retrieveAsset = function (data, err, err2) {
+        var url;
         log.debug(data);
         log.debug(err);
         log.debug(err2);
@@ -178,11 +182,13 @@ app.get('/f/*', function (req, res) {
             res.status(data.status || 500).send({error: data.err});
         }
         if (data && data.url) {
+            url = data.url;
+            url = url.split('').pop() !== '&' ? url : url.slice(0, -1);
             res.contentType('image/png');
-            console.log('making request ' + data.url + ' with cookie ' + data.tracking);
+            console.log('making request ' + Util.transformS3ParamEncodedToQueried(data.url) + ' with cookie ' + data.tracking);
             request
                 .get({
-                    url: data.url,
+                    url,
                     encoding: null,
                     headers: { Cookie: data.tracking || '' }
                 }, function (e, response, body) {
@@ -213,7 +219,7 @@ app.get('/f/*', function (req, res) {
                         setTimeout(function () {
                             //store file result in s3
                             s3.upload({
-                                Key: req.get('host') + '/' + req.path.slice(3), //slice off the /f/ at the front of all requests
+                                Key: Util.transformQueriedToS3ParamEncoded(req.get('host') + '/' + req.path.slice(3), req.query), //slice off the /f/ at the front of all requests
                                 Body: body,
                                 ACL: 'public-read'
                             }, function (err_) {
@@ -227,11 +233,20 @@ app.get('/f/*', function (req, res) {
                         res.set('content-disposition', 'inline;');
                         res.send(body);
                     } else {
-                        if (s3StoreFound) {
-                            //ignore errors if we have a cached copy
+                        //note that this method of falling back will mask the original reason for failure
+                        //so lets display it here
+                        if (e && !isFallbackAttempt) {
+                            log.debug('service failed for reason: ' + e);
+                        } else {
+                            log.debug('retrieval failure with status: ' + response.statusCode + ' and body ' + body);
+                        }
+                        if (s3StoreFound && !isFallbackAttempt) {
+                            isFallbackAttempt = true;
+                            log.info('Could not retrieve from service. Falling back to s3 store, at ' + 'https://s3.amazonaws.com/' + s3Bucket + '/' + key);
+                            //attempt to ignore errors if we have a cached copy
                             retrieveAsset({url: 'https://s3.amazonaws.com/' + s3Bucket + '/' + key });
                         } else if (e) {
-                            log.error('Server error [0xf07]: ');
+                            log.error('Server error [0xf07]: ' + e);
                             res.contentType('application/json');
                             res.status(500).send({error: 'Server error [0xf07]'});
                         } else {
@@ -249,7 +264,7 @@ app.get('/f/*', function (req, res) {
     s3.listObjects({Prefix: req.get('host')}, function (err_, data_) { //remove /f/
         var now = new Date(Date.now());
         var expires = now;
-        var searchKey = req.get('host') + '/' + req.path.slice(3);
+        var searchKey = req.get('host') + '/' + Util.transformQueriedToS3ParamEncoded(req.path.slice(3), req.query);
         now.setHours(now.getHours());
         data_.Contents.map(function (photo) {
             if (photo.Key === searchKey) {
