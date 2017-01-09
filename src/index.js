@@ -1,18 +1,20 @@
 var _ = require('lodash');
 var Log = require('log');
-var log = new Log('info');
 var rollbar = require('rollbar');
 var express = require('express');
 var app = express();
 var request = require('request');
 var crypto = require('crypto');
 var mime = require('mime-types');
-var service = require('./intelligence_bank_service.js');
-var IntelligenceBankConfig = require('../conf/intelligence_bank_config.json');
-var rollbarKeys = require('../conf/rollbar.json');
 var AWS = require('aws-sdk');
 var timeout = require('connect-timeout');
 var cliArgs = require('optimist').argv;
+var log = new Log((cliArgs.d || cliArgs.debug) ? 'debug' : 'info');
+
+var Util = require('./util.js');
+var service = require('./intelligence_bank_service.js');
+var IntelligenceBankConfig = require('../conf/intelligence_bank_config.json');
+var rollbarKeys = require('../conf/rollbar.json');
 
 AWS.config.loadFromPath('./conf/aws.json');
 var docClient = new AWS.DynamoDB.DocumentClient();
@@ -115,13 +117,13 @@ app.get(/^\/a\/{0,1}(.+)?/i, function (req, res) {
     }).catch(err => {
         var status = err.status || 500;
         var message = err.message || 'Server Error [0x339]';
-        console.log('asset with provided details could not be found');
+        log.info('asset with provided details could not be found');
         rollbar.reportMessageWithPayloadData('Error when trying to serve asset', {error: err, request: req});
         res.status(status).send({ message, status });
     });
 
     docClient.get(params, function (err, data) {
-        if (err || !Object.keys(data).length || cliArgs.n || cliArgs.nocache) {
+        if (err || !Object.keys(data).length || cliArgs.n || cliArgs.nocache, req.query.bust != null) {
             log.debug('No cache data for', data);
             service.getAssetInfo(assetId, assetResolve, assetReject);
         } else {
@@ -144,23 +146,35 @@ app.get('/f/*', function (req, res) {
 
     log.debug(req.url);
     log.debug(req.params);
+    var isFallbackAttempt = false;
+
+    var s3StoreFound = false;
+    var key = '';
+
+    var s3Bucket = 'cmwn-media-store';
+
+    var s3 = new AWS.S3({
+        apiVersion: '2006-03-01',
+        params: {Bucket: s3Bucket}
+    });
 
     var assetId = req.params[0] || '0';
     log.debug('Asset Id: ' + assetId);
 
     var query = '';
-    if (~req.url.indexOf('?')) {
-        query = '?' + req.url.split('?')[1];
+    if (~Util.transformS3ParamEncodedToQueried(req.url).indexOf('?')) {
+        query = '?' + Util.transformS3ParamEncodedToQueried(req.url).split('?')[1];
     }
 
     var r;
-    var p = new Promise(resolve => {
-        r = data => {
-            resolve(data);
-        };
+    var rej;
+    var p = new Promise((resolve, reject) => {
+        r = resolve;
+        rej = reject;
     });
 
-    p.then((data, err, err2) => {
+    var retrieveAsset = function (data, err, err2) {
+        var url;
         log.debug(data);
         log.debug(err);
         log.debug(err2);
@@ -168,41 +182,123 @@ app.get('/f/*', function (req, res) {
             res.status(data.status || 500).send({error: data.err});
         }
         if (data && data.url) {
+            url = data.url;
+            url = url.split('').pop() !== '&' ? url : url.slice(0, -1);
             res.contentType('image/png');
-            console.log('making request ' + data.url + ' with cookie ' + data.tracking);
+            log.info('making request ' + url + ' with cookie ' + data.tracking);
             request
                 .get({
-                    url: data.url,
-                    headers: { Cookie: data.tracking }
-                })
-                .on('response', function (response) {
+                    url,
+                    encoding: null,
+                    headers: { Cookie: data.tracking || '' }
+                }, function (e, response, body) {
                     var extension;
                     var mimeType;
-                    if (response.statusCode !== 200) {
-                        res.status(500).send({error: 'File could not be returned'});
-                        return;
+                    if (!e && response.statusCode === 200 && (body.length > 50 || !~body.indexOf('estimatedFileSize'))) {
+                        try {
+                            if (response.statusCode !== 200) {
+                                res.status(500).send({error: 'File could not be returned'});
+                                return;
+                            }
+                            res.set('cache-control', 'public, max-age=604800');
+                            if (response.headers['content-disposition']) {
+                                extension = response.headers['content-disposition'].split('.')[1].toLowerCase().replace('"', '');
+                                mimeType = mime.lookup(extension);
+                            }
+                            if (!mimeType) {
+                                mimeType = 'image/png';
+                            }
+                            res.set('content-type', mimeType);
+                            res.contentType(mimeType);
+                            res.set('etag', crypto.createHash('md5').update(data.url).digest('hex'));
+                        } catch(error) {
+                            log.error('Some content headers could not be set. Attempting to return asset. Reason: ' + error);
+                        }
+
+                        //don't waste the user's time storing before the asset has been returned
+                        setTimeout(function () {
+                            //store file result in s3
+                            s3.upload({
+                                Key: Util.transformQueriedToS3ParamEncoded(req.get('host') + '/' + req.path.slice(3), req.query), //slice off the /f/ at the front of all requests
+                                Body: body,
+                                ACL: 'public-read'
+                            }, function (err_) {
+                                if (err_) {
+                                    log.error('There was an error uploading your photo: ' + err_.message);
+                                }
+                                log.info('Successfully uploaded photo.');
+                            });
+                        }, 500);
+
+                        res.set('content-disposition', 'inline;');
+                        res.send(body);
+                    } else {
+                        //note that this method of falling back will mask the original reason for failure
+                        //so lets display it here
+                        if (e && !isFallbackAttempt) {
+                            log.debug('service failed for reason: ' + e);
+                        } else {
+                            log.debug('retrieval failure with status: ' + response.statusCode + ' and body ' + body);
+                        }
+                        if (s3StoreFound && !isFallbackAttempt) {
+                            isFallbackAttempt = true;
+                            log.info('Could not retrieve from service. Falling back to s3 store, at ' + 'https://s3.amazonaws.com/' + s3Bucket + '/' + key);
+                            //attempt to ignore errors if we have a cached copy
+                            retrieveAsset({url: 'https://s3.amazonaws.com/' + s3Bucket + '/' + key });
+                        } else if (e) {
+                            log.error('Server error [0xf07]: ' + e);
+                            res.contentType('application/json');
+                            res.status(500).send({error: 'Server error [0xf07]'});
+                        } else {
+                            res.contentType('application/json');
+                            res.status(404).send({error: 'File not Found'});
+                        }
                     }
-                    response.headers['cache-control'] = 'public, max-age=604800';
-                    extension = response.headers['content-disposition'].split('.')[1].toLowerCase().replace('"', '');
-                    mimeType = mime.lookup(extension);
-                    if (!mimeType) {
-                        mimeType = 'image/png';
-                    }
-                    response.headers['content-type'] = mimeType;
-                    res.contentType(mimeType);
-                    response.headers['content-disposition'] = 'inline;';
-                    response.headers.etag = crypto.createHash('md5').update(data.url).digest('hex');
-                    return response;
-                }).pipe(res);
+                });
         } else {
             res.status(data && data.status || 404).send();
         }
-    }).catch(err => {
+    };
+
+    //initially, check if we have a valid stored file to send back
+    s3.listObjects({Prefix: req.get('host')}, function (err_, data_) { //remove /f/
+        var now = new Date(Date.now());
+        var expires = now;
+        var searchKey = req.get('host') + '/' + Util.transformQueriedToS3ParamEncoded(req.path.slice(3), req.query);
+        now.setHours(now.getHours());
+        data_.Contents.map(function (photo) {
+            if (photo.Key === searchKey) {
+                s3StoreFound = true;
+                key = photo.Key;
+                expires = new Date(Date.parse(photo.LastModified));
+                expires.setHours(expires.getHours() + CACHE_EXPIRY);
+            }
+        });
+        //until we have the update service, these need to expire after a day
+        //however, we dont want to delete them and make them unavailable, so
+        //we want to fall back to the s3 version even if it is expired
+        log.info('asset found in s3?: ' + s3StoreFound);
+        if (s3StoreFound && req.query.bust == null && cliArgs.n == null && cliArgs.nocache == null && now < expires) {
+            r({url: 'https://s3.amazonaws.com/' + s3Bucket + '/' + key });
+        } else {
+            log.info('skipping s3');
+            service.getAsset(Util.transformS3ParamEncodedToQueried(assetId + query), r, function () {
+                if (s3StoreFound) {
+                    log.info('image unavailable from service, falling back to s3 store copy');
+                    r({url: 'https://s3.amazonaws.com/' + s3Bucket + '/' + key });
+                } else {
+                    rej.apply(this, arguments);
+                }
+            });
+        }
+    });
+
+    //after file has been retrieved
+    p.then(retrieveAsset).catch(err => {
         rollbar.reportMessageWithPayloadData('Error when trying to serve asset', {error: err, request: req});
         res.status(500).send({ error: 'Something failed!' });
     });
 
-    service.getAsset(assetId + query, r);
 });
 
 // ping the service (used for health checks
@@ -220,5 +316,5 @@ app.use(rollbar.errorHandler(rollbarKeys.token, rollbarOpts));
 app.listen(3000, function () {
     //service.init(storage);
     service.init();
-    log.debug('Example app listening on port 3000!');
+    log.debug('App listening on port 3000!');
 });

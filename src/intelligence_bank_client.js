@@ -1,7 +1,8 @@
 'use strict';
 var _ = require('lodash');
 var Log = require('log');
-var log = new Log('info');
+var cliArgs = require('optimist').argv;
+var log = new Log((cliArgs.d || cliArgs.debug) ? 'debug' : 'info');
 var httprequest = require('request');
 
 var AWS = require('aws-sdk');
@@ -204,7 +205,7 @@ class IntelligenceBank {
                             throw ({status: 500, message: 'Internal service error: [0xEA7'});
                         }
 
-                        log.info('got data');
+                        log.debug('got data: ' + JSON.stringify(data));
                         resolve(data.response || data);
                     } catch(error) {
                         if (!options.forceLogin) {
@@ -339,9 +340,11 @@ class IntelligenceBank {
                         } else {
                             var found = false;
                             _.some(transformedFolder.items, function (item) {
+                                log.debug('searching in folder ' + item.name);
                                 if (item.name === pathToMatch.split('/')[foldersSearched]) {
                                     found = true;
                                     newPath = currentPath ? currentPath + '/' + item.name : item.name;
+                                    log.debug('found item at path ' + newPath);
                                     self.getFolderByPath(pathToMatch, newPath, item.media_id || item.fileuuid, ++foldersSearched)
                                         .then(function (data_) {
                                             resolve(data_); //again, no need to double transform

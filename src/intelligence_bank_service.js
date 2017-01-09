@@ -1,7 +1,8 @@
 var exports = module.exports = {};
 var _ = require('lodash');
 var Log = require('log');
-var log = new Log('info');
+var cliArgs = require('optimist').argv;
+var log = new Log((cliArgs.d || cliArgs.debug) ? 'debug' : 'info');
 var config = require('../conf/intelligence_bank_config.json');
 
 var AWS = require('aws-sdk');
@@ -186,7 +187,7 @@ exports.init = function () {
  * @param r (function) the function the calls the resolve for the Promise
  */
 exports.getAssetInfo = function (assetId, resolve, reject) {
-    console.log('Getting general asset info to determine folder or file type');
+    log.info('Getting general asset info for id ' + assetId + ' to determine folder or file type');
     var requestData = {};
     if (assetId !== '0' && (assetId.indexOf('/') !== -1 || assetId.length !== 32)) {
         if (assetId[assetId.length - 1] === '/') {
@@ -223,6 +224,7 @@ exports.getAssetInfo = function (assetId, resolve, reject) {
  */
 exports.getAsset = function (assetId, r) {
     'use strict';
+    log.debug('getting asset url for id ' + assetId);
     if (assetId[assetId.length - 1] === '/') {
         assetId.slice(0, -1);
     }
