@@ -74,11 +74,11 @@ app.get(/^\/a\/{0,1}(.+)?/i, function (req, res) {
         }
     };
 
-    log.debug(req.url);
-    log.debug(req.params);
+    log.debug('request for url: ' + req.url);
+    log.debug('using params: ' + req.params);
 
     assetId = req.params[0] || '0';
-    log.debug('Asset Id: ' + assetId);
+    log.debug('Asset Id or Path: ' + assetId);
 
     assetPromise = new Promise((resolve, reject) => {
         assetResolve = data => {
@@ -127,7 +127,7 @@ app.get(/^\/a\/{0,1}(.+)?/i, function (req, res) {
             log.debug('No cache data for', data);
             service.getAssetInfo(assetId, assetResolve, assetReject);
         } else {
-            if (data.Item.expires - Math.floor((new Date).getTime() / 1000) < 0 ) {
+            if (!data || !data.Item || data.Item.expires - Math.floor((new Date).getTime() / 1000) < 0 ) {
                 log.debug('Cache expired for', data);
                 service.getAssetInfo(assetId, assetResolve, assetReject);
             } else {
