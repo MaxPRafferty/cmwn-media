@@ -327,7 +327,15 @@ class IntelligenceBank {
 
         docClient.get(params, function (err_, cacheData) {
             //if uncached
-            if (err_ || !cacheData || !cacheData.Item || !cacheData.Item.data || cliArgs.n || cliArgs.nocache || noCache) {
+            if (err_ ||
+                !cacheData ||
+                !cacheData.Item ||
+                !cacheData.Item.data ||
+                cliArgs.n ||
+                cliArgs.nocache ||
+                noCache ||
+                global.noCache /* note the use of the global here. Don't copy that. */
+            ) {
                 self.makeHTTPCall(options)
                     .then(function (data) {
                         var newPath;

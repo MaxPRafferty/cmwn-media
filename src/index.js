@@ -67,6 +67,9 @@ app.get(/^\/a\/{0,1}(.+)?/i, function (req, res) {
     var assetReject;
     var assetPromise;
 
+    //unfortunately there is no non-breaking way around this global. Forgiveness.
+    global.noCache = req.query.bust != null;
+
     var params = {
         TableName: 'media-cache',
         Key: {
@@ -258,6 +261,10 @@ app.get('/f/*', function (req, res) {
         } else {
             res.status(data && data.status || 404).send();
         }
+
+        //we only set this global in the /f so that downstream changes don't try to use it
+        //and get a stale value. Don't use this global if it can be avoided!
+        global.noCache = req.query.bust != null;
     };
 
     //initially, check if we have a valid stored file to send back
