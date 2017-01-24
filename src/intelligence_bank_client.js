@@ -1,7 +1,8 @@
 'use strict';
 var _ = require('lodash');
 var Log = require('log');
-var log = new Log('info');
+var cliArgs = require('optimist').argv;
+var log = new Log((cliArgs.d || cliArgs.debug) ? 'debug' : 'info');
 var httprequest = require('request');
 
 var AWS = require('aws-sdk');
@@ -204,7 +205,7 @@ class IntelligenceBank {
                             throw ({status: 500, message: 'Internal service error: [0xEA7'});
                         }
 
-                        log.info('got data');
+                        log.debug('got data: ' + JSON.stringify(data));
                         resolve(data.response || data);
                     } catch(error) {
                         if (!options.forceLogin) {
@@ -291,10 +292,12 @@ class IntelligenceBank {
      * service will be caching everything by both path and ID, however, so we will
      * only be falling back to this source of truth as the cache expires.
      */
-    getFolderByPath(pathToMatch, currentPath = '', currentFolderId, foldersSearched = 0) {
+    getFolderByPath(pathToMatch, currentPath, currentFolderId, foldersSearched, noCache) {
         log.info('walking folder tree in search of ' + pathToMatch + ', currently at ' + currentPath);
-        currentPath = currentPath || '';
-        currentFolderId = currentFolderId || '';
+        currentPath = currentPath == null ? '' : currentPath;
+        currentFolderId = currentFolderId == null ? '' : currentFolderId;
+        foldersSearched = foldersSearched == null ? 0 : foldersSearched;
+        noCache = noCache == null ? false : noCache;
         var self = this;
         var resolve;
         var reject;
@@ -324,7 +327,15 @@ class IntelligenceBank {
 
         docClient.get(params, function (err_, cacheData) {
             //if uncached
-            if (err_ || !cacheData.Item || !cacheData.Item.data) {
+            if (err_ ||
+                !cacheData ||
+                !cacheData.Item ||
+                !cacheData.Item.data ||
+                cliArgs.n ||
+                cliArgs.nocache ||
+                noCache ||
+                global.noCache /* note the use of the global here. Don't copy that. */
+            ) {
                 self.makeHTTPCall(options)
                     .then(function (data) {
                         var newPath;
@@ -339,9 +350,11 @@ class IntelligenceBank {
                         } else {
                             var found = false;
                             _.some(transformedFolder.items, function (item) {
+                                log.debug('searching in folder ' + item.name);
                                 if (item.name === pathToMatch.split('/')[foldersSearched]) {
                                     found = true;
                                     newPath = currentPath ? currentPath + '/' + item.name : item.name;
+                                    log.debug('found item at path ' + newPath);
                                     self.getFolderByPath(pathToMatch, newPath, item.media_id || item.fileuuid, ++foldersSearched)
                                         .then(function (data_) {
                                             resolve(data_); //again, no need to double transform
@@ -374,12 +387,15 @@ class IntelligenceBank {
                     });
             } else {
                 var newPath;
+                var hit = false;
                 var transformedFolder = cacheData.Item.data;
                 if (params.Key.path === pathToMatch) {
+                    log.debug('folder path found.');
                     resolve(transformedFolder);
                 } else {
                     _.some(transformedFolder.items, function (item) {
                         if (item.name === pathToMatch.split('/')[foldersSearched]) {
+                            hit = true;
                             newPath = currentPath ? currentPath + '/' + item.name : item.name;
                             self.getFolderByPath(pathToMatch, newPath, item.media_id || item.fileuuid, ++foldersSearched)
                                 .then(function (data_) {
@@ -391,6 +407,18 @@ class IntelligenceBank {
                             return true;
                         }
                     });
+                    //see if we have a chance to recover from a bad cache response
+                    if (!hit && noCache){
+                        reject('folder does not exist in subtree path ' + currentPath);
+                    } else {
+                        self.getFolderByPath(arguments[0], arguments[1], arguments[2], arguments[3], true)
+                            .then(function (data_) {
+                                resolve(data_); //again, no need to double transform
+                            })
+                            .catch(function () {
+                                reject('folder does not exist in subtree path ' + currentPath);
+                            });
+                    }
                 }
             }
         });
