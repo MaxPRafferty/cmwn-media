@@ -605,6 +605,7 @@ class IntelligenceBank {
     }
 
     getAssetIdByPath(path) {
+        var ext;
         var folderPath = path.split('/');
         var filename = folderPath.pop();
         folderPath = folderPath.join('/');
@@ -620,7 +621,12 @@ class IntelligenceBank {
         this.getFolderByPath(folderPath)
         .then(folderInfo => {
             if (!_.some(folderInfo.items, item => {
-                if (item.origfilename === filename) {
+
+                if (item.origfilename) {
+                    ext = item.origfilename.split('.').pop();
+                }
+
+                if (item.name + '.' + ext === filename) {
                     resolve(item.media_id);
                     return true;
                 }
