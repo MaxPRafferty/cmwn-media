@@ -157,16 +157,18 @@ exports.init = function () {
                 onConnect: function (data_) {
                     log.info('success, caching data');
                     //store in dynamo
-                    docClient.put({TableName: 'intelligence_bank_keys', Item: {
-                        'key_name': 'apiKey',
-                        useruuid: data_.useruuid,
-                        apiKey: data_.apiKey,
-                        tracking: data_.tracking
-                    }}, function (err_) {
-                        if (err_ != null) {
-                            log.warn('key cache store failed: ' + err_);
-                        }
-                    });
+                    if (_.size(data.items)) {
+                        docClient.put({TableName: 'intelligence_bank_keys', Item: {
+                            'key_name': 'apiKey',
+                            useruuid: data_.useruuid,
+                            apiKey: data_.apiKey,
+                            tracking: data_.tracking
+                        }}, function (err_) {
+                            if (err_ != null) {
+                                log.warn('key cache store failed: ' + err_);
+                            }
+                        });
+                    }
                 }
             });
         } else {
