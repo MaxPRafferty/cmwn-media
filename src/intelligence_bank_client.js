@@ -7,7 +7,7 @@ var httprequest = require('request');
 
 var AWS = require('aws-sdk');
 var docClient = new AWS.DynamoDB.DocumentClient();
-const CACHE_EXPIRY = 1; //hours
+const CACHE_EXPIRY = 2147483647; //2^31 - 1
 
 var rollbar = require('rollbar');
 
@@ -374,7 +374,7 @@ class IntelligenceBank {
                         if (_.size(transformedFolder.items)) {
                             docClient.put({TableName: 'intelligence_bank_cache', Item: {
                                 path: currentPath || 'root',
-                                expires: Math.floor((new Date).getTime() / 1000) + CACHE_EXPIRY * 360000,
+                                expires: CACHE_EXPIRY,
                                 data: transformedFolder
                             }}, function (err) {
                                 if (err) {

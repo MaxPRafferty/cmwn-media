@@ -22,7 +22,7 @@ var rollbarOpts = {
     environment: 'Media'
 };
 
-const CACHE_EXPIRY = 1; //hours
+const CACHE_EXPIRY = 2147483647; //2^31 - 1
 
 app.use(timeout(45000));
 app.use(logOnTimedout);
@@ -102,7 +102,7 @@ app.get(/^\/a\/{0,1}(.+)?/i, function (req, res) {
                 if (_.size(data.items)) {
                     docClient.put({TableName: 'media-cache', Item: {
                         path: IntelligenceBankConfig.host + req.url,
-                        expires: Math.floor((new Date).getTime() / 1000) + CACHE_EXPIRY * 360000,
+                        expires: CACHE_EXPIRY,
                         data: data
                     }}, function (err) {
                         if (err) {
@@ -279,8 +279,7 @@ app.get('/f/*', function (req, res) {
             if (photo.Key === searchKey) {
                 s3StoreFound = true;
                 key = photo.Key;
-                expires = new Date(Date.parse(photo.LastModified));
-                expires.setHours(expires.getHours() + CACHE_EXPIRY);
+                expires = new Date(CACHE_EXPIRY * 1000);
             }
         });
         //until we have the update service, these need to expire after a day
