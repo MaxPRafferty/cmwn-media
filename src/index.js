@@ -1,4 +1,5 @@
 var _ = require('lodash');
+var compression = require('compression');
 var Log = require('log');
 var rollbar = require('rollbar');
 var express = require('express');
@@ -24,6 +25,7 @@ var rollbarOpts = {
 
 const CACHE_EXPIRY = 1; //hours
 
+app.use(compression());
 app.use(timeout(45000));
 app.use(logOnTimedout);
 
