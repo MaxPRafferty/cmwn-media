@@ -11,7 +11,6 @@ var AWS = require('aws-sdk');
 var timeout = require('connect-timeout');
 var cliArgs = require('optimist').argv;
 var log = new Log((cliArgs.d || cliArgs.debug) ? 'debug' : 'info');
-var crypto = require('crypto');
 
 var Util = require('./util.js');
 var service = require('./intelligence_bank_service.js');
@@ -28,9 +27,9 @@ var rollbarOpts = {
 var cluster = require('cluster');
 
 function md5(stringToHash) {
-    var md5 = crypto.createHash('md5');
-    md5.update(stringToHash);
-    return md5.digest('hex');
+    var md5Hash = crypto.createHash('md5');
+    md5Hash.update(stringToHash);
+    return md5Hash.digest('hex');
 }
 
 function logOnTimedout(req, res, next){
@@ -217,7 +216,7 @@ if (cluster.isMaster) {
                 res.status(data.status || 500).send({error: data.err});
             }
             if (data && data.url) {
-                if (s3StoreFound) {
+                if (s3StoreFound && req.query.bust == null && cliArgs.n == null && cliArgs.nocache == null) {
                     res.set('location', data.url);
                     res.status(301).send();
                     return;
