@@ -1,6 +1,6 @@
 {
   "name": "cmwn-media",
-  "version": "2.0.10",
+  "version": "2.0.11",
   "description": "Media Server for Change My World Now",
   "main": "index.js",
   "scripts": {
