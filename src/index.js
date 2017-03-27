@@ -210,6 +210,11 @@ if (cluster.isMaster) {
                 res.status(data.status || 500).send({error: data.err});
             }
             if (data && data.url) {
+                if (s3StoreFound) {
+                    res.set('location', data.url);
+                    res.status(301).send();
+                    return;
+                }
                 url = data.url;
                 url = url.split('').pop() !== '&' ? url : url.slice(0, -1);
                 res.contentType('image/png');
