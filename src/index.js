@@ -102,7 +102,7 @@ if (cluster.isMaster) {
         var params = {
             TableName: 'media-cache',
             Key: {
-                'path': IntelligenceBankConfig.host + req.url
+                'path': IntelligenceBankConfig.host + require('url').parse(req.url).pathname
             }
         };
 
@@ -130,13 +130,15 @@ if (cluster.isMaster) {
                     log.info('Cache Miss');
                     if (_.size(data.items)) {
                         docClient.put({TableName: 'media-cache', Item: {
-                            path: IntelligenceBankConfig.host + req.url,
+                            path: IntelligenceBankConfig.host + require('url').parse(req.url).pathname,
                             expires: Math.floor((new Date).getTime() / 1000) + CACHE_EXPIRY * 360000,
                             data: data
                         }}, function (err) {
                             if (err) {
                                 log.error('cache store failed: ' + err);
                                 rollbar.reportMessageWithPayloadData('Error trying to cache asset', {error: err, request: req});
+                            } else {
+                                log.info('cache store success');
                             }
                         });
                     }
@@ -161,7 +163,11 @@ if (cluster.isMaster) {
                 log.debug('No cache data for', data);
                 service.getAssetInfo(assetId, assetResolve, assetReject);
             } else {
-                if (!data || !data.Item || data.Item.expires - Math.floor((new Date).getTime() / 1000) < 0 ) {
+                if (
+                    !data ||
+                    !data.Item ||
+                    data.Item.expires - Math.floor((new Date).getTime() / 1000) < 0
+                ) {
                     log.debug('Cache expired for', data);
                     service.getAssetInfo(assetId, assetResolve, assetReject);
                 } else {
@@ -181,8 +187,11 @@ if (cluster.isMaster) {
         log.debug(req.url);
         log.debug(req.params);
         var isFallbackAttempt = false;
+        var now = new Date(Date.now());
+        var expires = now;
 
         var s3StoreFound = false;
+        var s3CachedSize = 0;
         var key = '';
 
         var s3Bucket = 'cmwn-media-store';
@@ -216,7 +225,7 @@ if (cluster.isMaster) {
                 res.status(data.status || 500).send({error: data.err});
             }
             if (data && data.url) {
-                if (s3StoreFound && req.query.bust == null && cliArgs.n == null && cliArgs.nocache == null) {
+                if (s3StoreFound && req.query.bust == null && cliArgs.n == null && cliArgs.nocache == null && now < expires) {
                     res.set('location', data.url);
                     res.status(301).send();
                     return;
@@ -233,6 +242,7 @@ if (cluster.isMaster) {
                     }, function (e, response, body) {
                         var extension;
                         var mimeType;
+                        var reupload = false;
                         if (!e && response.statusCode === 200 && (body.length > 50 || !~body.indexOf('estimatedFileSize'))) {
                             try {
                                 if (response.statusCode !== 200) {
@@ -250,25 +260,31 @@ if (cluster.isMaster) {
                                 res.set('content-type', mimeType);
                                 res.contentType(mimeType);
                                 res.set('etag', crypto.createHash('md5').update(data.url).digest('hex'));
+                                reupload = +s3CachedSize !== +response.headers['content-length'];
                             } catch(error) {
                                 log.error('Some content headers could not be set. Attempting to return asset. Reason: ' + error);
                             }
 
-                            //don't waste the user's time storing before the asset has been returned
-                            setTimeout(function () {
-                                //store file result in s3
-                                s3.upload({
-                                    Key: Util.transformQueriedToS3ParamEncoded(md5(req.get('host')) + '/' + req.path.slice(3), req.query), //slice off the /f/ at the front of all requests
-                                    Body: body,
-                                    ContentType: mimeType,
-                                    ACL: 'public-read'
-                                }, function (err_) {
-                                    if (err_) {
-                                        log.error('There was an error uploading your photo: ' + err_.message);
-                                    }
-                                    log.info('Successfully uploaded photo.');
-                                });
-                            }, 500);
+                            //if our files are exactly the same size, assume they have not changed
+                            if (reupload) {
+                                //don't waste the user's time storing before the asset has been returned
+                                setTimeout(function () {
+                                    //store file result in s3
+                                    s3.upload({
+                                        Key: Util.transformQueriedToS3ParamEncoded(md5(req.get('host')) + '/' + req.path.slice(3), req.query), //slice off the /f/ at the front of all requests
+                                        Body: body,
+                                        ContentType: mimeType,
+                                        ACL: 'public-read'
+                                    }, function (err_) {
+                                        if (err_) {
+                                            log.error('There was an error uploading your photo: ' + err_.message);
+                                        }
+                                        log.info('Successfully uploaded photo.');
+                                    });
+                                }, 500);
+                            } else {
+                                log.info('file unchanged, skipping s3 reupload');
+                            }
 
                             res.set('content-disposition', 'inline;');
                             res.send(body);
@@ -306,13 +322,12 @@ if (cluster.isMaster) {
 
         //initially, check if we have a valid stored file to send back
         s3.listObjects({Prefix: md5(req.get('host'))}, function (err_, data_) { //remove /f/
-            var now = new Date(Date.now());
-            var expires = now;
             var searchKey = md5(req.get('host')) + '/' + Util.transformQueriedToS3ParamEncoded(req.path.slice(3), req.query);
             now.setHours(now.getHours());
             data_.Contents.map(function (photo) {
                 if (photo.Key === searchKey) {
                     s3StoreFound = true;
+                    s3CachedSize = photo.Size;
                     key = photo.Key;
                     expires = new Date(Date.parse(photo.LastModified));
                     expires.setHours(expires.getHours() + CACHE_EXPIRY);
