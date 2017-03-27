@@ -58,6 +58,14 @@ if (cluster.isMaster) {
     for (var i = 0; i < cpuCount; i += 1) {
         cluster.fork();
     }
+    // Listen for dying workers
+    cluster.on('exit', function (worker) {
+        // Replace the dead worker,
+        // we're not sentimental
+        log.warn('Worker %d died :(', worker.id);
+        cluster.fork();
+    });
+
 } else {
     const CACHE_EXPIRY = 1; //hours
 
