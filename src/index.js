@@ -11,6 +11,7 @@ var AWS = require('aws-sdk');
 var timeout = require('connect-timeout');
 var cliArgs = require('optimist').argv;
 var log = new Log((cliArgs.d || cliArgs.debug) ? 'debug' : 'info');
+var crypto = require('crypto');
 
 var Util = require('./util.js');
 var service = require('./intelligence_bank_service.js');
@@ -25,6 +26,12 @@ var rollbarOpts = {
 
 // Include the cluster module
 var cluster = require('cluster');
+
+function md5(stringToHash) {
+    var md5 = crypto.createHash('md5');
+    md5.update(stringToHash);
+    return md5.digest('hex');
+}
 
 function logOnTimedout(req, res, next){
     if (req.timedout) {
@@ -252,7 +259,7 @@ if (cluster.isMaster) {
                             setTimeout(function () {
                                 //store file result in s3
                                 s3.upload({
-                                    Key: Util.transformQueriedToS3ParamEncoded(req.get('host') + '/' + req.path.slice(3), req.query), //slice off the /f/ at the front of all requests
+                                    Key: Util.transformQueriedToS3ParamEncoded(md5(req.get('host')) + '/' + req.path.slice(3), req.query), //slice off the /f/ at the front of all requests
                                     Body: body,
                                     ContentType: mimeType,
                                     ACL: 'public-read'
@@ -299,10 +306,10 @@ if (cluster.isMaster) {
         };
 
         //initially, check if we have a valid stored file to send back
-        s3.listObjects({Prefix: req.get('host')}, function (err_, data_) { //remove /f/
+        s3.listObjects({Prefix: md5(req.get('host'))}, function (err_, data_) { //remove /f/
             var now = new Date(Date.now());
             var expires = now;
-            var searchKey = req.get('host') + '/' + Util.transformQueriedToS3ParamEncoded(req.path.slice(3), req.query);
+            var searchKey = md5(req.get('host')) + '/' + Util.transformQueriedToS3ParamEncoded(req.path.slice(3), req.query);
             now.setHours(now.getHours());
             data_.Contents.map(function (photo) {
                 if (photo.Key === searchKey) {
