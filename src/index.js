@@ -102,7 +102,7 @@ if (cluster.isMaster) {
         var params = {
             TableName: 'media-cache',
             Key: {
-                'path': IntelligenceBankConfig.host + req.url
+                'path': IntelligenceBankConfig.host + require('url').parse(req.url).pathname
             }
         };
 
@@ -130,7 +130,7 @@ if (cluster.isMaster) {
                     log.info('Cache Miss');
                     if (_.size(data.items)) {
                         docClient.put({TableName: 'media-cache', Item: {
-                            path: IntelligenceBankConfig.host + req.url,
+                            path: IntelligenceBankConfig.host + require('url').parse(req.url).pathname,
                             expires: Math.floor((new Date).getTime() / 1000) + CACHE_EXPIRY * 360000,
                             data: data
                         }}, function (err) {
