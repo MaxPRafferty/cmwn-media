@@ -183,6 +183,7 @@ if (cluster.isMaster) {
         var isFallbackAttempt = false;
 
         var s3StoreFound = false;
+        var s3CachedSize = 0;
         var key = '';
 
         var s3Bucket = 'cmwn-media-store';
@@ -233,6 +234,7 @@ if (cluster.isMaster) {
                     }, function (e, response, body) {
                         var extension;
                         var mimeType;
+                        var reupload = true;
                         if (!e && response.statusCode === 200 && (body.length > 50 || !~body.indexOf('estimatedFileSize'))) {
                             try {
                                 if (response.statusCode !== 200) {
@@ -250,25 +252,28 @@ if (cluster.isMaster) {
                                 res.set('content-type', mimeType);
                                 res.contentType(mimeType);
                                 res.set('etag', crypto.createHash('md5').update(data.url).digest('hex'));
+                                reupload = +s3CachedSize !== +response.headers['content-length'];
                             } catch(error) {
                                 log.error('Some content headers could not be set. Attempting to return asset. Reason: ' + error);
                             }
 
                             //don't waste the user's time storing before the asset has been returned
-                            setTimeout(function () {
-                                //store file result in s3
-                                s3.upload({
-                                    Key: Util.transformQueriedToS3ParamEncoded(md5(req.get('host')) + '/' + req.path.slice(3), req.query), //slice off the /f/ at the front of all requests
-                                    Body: body,
-                                    ContentType: mimeType,
-                                    ACL: 'public-read'
-                                }, function (err_) {
-                                    if (err_) {
-                                        log.error('There was an error uploading your photo: ' + err_.message);
-                                    }
-                                    log.info('Successfully uploaded photo.');
-                                });
-                            }, 500);
+                            if (reupload) {
+                                setTimeout(function () {
+                                    //store file result in s3
+                                    s3.upload({
+                                        Key: Util.transformQueriedToS3ParamEncoded(md5(req.get('host')) + '/' + req.path.slice(3), req.query), //slice off the /f/ at the front of all requests
+                                        Body: body,
+                                        ContentType: mimeType,
+                                        ACL: 'public-read'
+                                    }, function (err_) {
+                                        if (err_) {
+                                            log.error('There was an error uploading your photo: ' + err_.message);
+                                        }
+                                        log.info('Successfully uploaded photo.');
+                                    });
+                                }, 500);
+                            }
 
                             res.set('content-disposition', 'inline;');
                             res.send(body);
@@ -313,6 +318,7 @@ if (cluster.isMaster) {
             data_.Contents.map(function (photo) {
                 if (photo.Key === searchKey) {
                     s3StoreFound = true;
+                    s3CachedSize = photo.Size;
                     key = photo.Key;
                     expires = new Date(Date.parse(photo.LastModified));
                     expires.setHours(expires.getHours() + CACHE_EXPIRY);
