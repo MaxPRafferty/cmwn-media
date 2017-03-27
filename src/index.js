@@ -73,7 +73,7 @@ if (cluster.isMaster) {
     });
 
 } else {
-    const CACHE_EXPIRY = 1; //hours
+    const CACHE_EXPIRY = 24; //hours
 
     app.use(compression());
     app.use(timeout(45000));
@@ -181,6 +181,8 @@ if (cluster.isMaster) {
         log.debug(req.url);
         log.debug(req.params);
         var isFallbackAttempt = false;
+        var now = new Date(Date.now());
+        var expires = now;
 
         var s3StoreFound = false;
         var s3CachedSize = 0;
@@ -217,7 +219,7 @@ if (cluster.isMaster) {
                 res.status(data.status || 500).send({error: data.err});
             }
             if (data && data.url) {
-                if (s3StoreFound && req.query.bust == null && cliArgs.n == null && cliArgs.nocache == null) {
+                if (s3StoreFound && req.query.bust == null && cliArgs.n == null && cliArgs.nocache == null && now < expires) {
                     res.set('location', data.url);
                     res.status(301).send();
                     return;
@@ -257,8 +259,9 @@ if (cluster.isMaster) {
                                 log.error('Some content headers could not be set. Attempting to return asset. Reason: ' + error);
                             }
 
-                            //don't waste the user's time storing before the asset has been returned
-                            if (reupload) {
+                            //if we are expired, reupload the files even if they are identical
+                            if (reupload || now >= expires) {
+                                //don't waste the user's time storing before the asset has been returned
                                 setTimeout(function () {
                                     //store file result in s3
                                     s3.upload({
@@ -311,8 +314,6 @@ if (cluster.isMaster) {
 
         //initially, check if we have a valid stored file to send back
         s3.listObjects({Prefix: md5(req.get('host'))}, function (err_, data_) { //remove /f/
-            var now = new Date(Date.now());
-            var expires = now;
             var searchKey = md5(req.get('host')) + '/' + Util.transformQueriedToS3ParamEncoded(req.path.slice(3), req.query);
             now.setHours(now.getHours());
             data_.Contents.map(function (photo) {
@@ -324,11 +325,9 @@ if (cluster.isMaster) {
                     expires.setHours(expires.getHours() + CACHE_EXPIRY);
                 }
             });
-            //until we have the update service, these need to expire after a day
-            //however, we dont want to delete them and make them unavailable, so
-            //we want to fall back to the s3 version even if it is expired
             log.info('asset found in s3?: ' + s3StoreFound);
             if (s3StoreFound && req.query.bust == null && cliArgs.n == null && cliArgs.nocache == null && now < expires) {
+            //if (s3StoreFound && req.query.bust == null && cliArgs.n == null && cliArgs.nocache == null) {
                 r({url: 'https://s3.amazonaws.com/' + s3Bucket + '/' + key });
             } else {
                 log.info('skipping s3');
