@@ -47,3 +47,4 @@ media/*
 
 **/*.swp
 
+**/.DS_Store

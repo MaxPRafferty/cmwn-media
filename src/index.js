@@ -241,6 +241,7 @@ if (cluster.isMaster) {
                                 s3.upload({
                                     Key: Util.transformQueriedToS3ParamEncoded(req.get('host') + '/' + req.path.slice(3), req.query), //slice off the /f/ at the front of all requests
                                     Body: body,
+                                    ContentType: mimeType,
                                     ACL: 'public-read'
                                 }, function (err_) {
                                     if (err_) {
