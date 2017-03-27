@@ -370,16 +370,19 @@ class IntelligenceBank {
                             }
                         }
 
-                        docClient.put({TableName: 'intelligence_bank_cache', Item: {
-                            path: currentPath || 'root',
-                            expires: Math.floor((new Date).getTime() / 1000) + CACHE_EXPIRY * 360000,
-                            data: transformedFolder
-                        }}, function (err) {
-                            if (err) {
-                                log.error('cache store failed: ' + err);
-                                rollbar.reportMessageWithPayloadData('Error trying to cache asset', {error: err});
-                            }
-                        });
+                        // only cache if the folder has items
+                        if (_.size(transformedFolder.items)) {
+                            docClient.put({TableName: 'intelligence_bank_cache', Item: {
+                                path: currentPath || 'root',
+                                expires: Math.floor((new Date).getTime() / 1000) + CACHE_EXPIRY * 360000,
+                                data: transformedFolder
+                            }}, function (err) {
+                                if (err) {
+                                    log.error('cache store failed: ' + err);
+                                    rollbar.reportMessageWithPayloadData('Error trying to cache asset', {error: err});
+                                }
+                            });
+                        }
                     })
                     .catch(function (err) {
                         log.error(err);
@@ -602,6 +605,7 @@ class IntelligenceBank {
     }
 
     getAssetIdByPath(path) {
+        var ext;
         var folderPath = path.split('/');
         var filename = folderPath.pop();
         folderPath = folderPath.join('/');
@@ -617,7 +621,12 @@ class IntelligenceBank {
         this.getFolderByPath(folderPath)
         .then(folderInfo => {
             if (!_.some(folderInfo.items, item => {
-                if (item.origfilename === filename) {
+
+                if (item.origfilename) {
+                    ext = item.origfilename.split('.').pop();
+                }
+
+                if (item.name + '.' + ext === filename) {
                     resolve(item.media_id);
                     return true;
                 }

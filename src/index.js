@@ -101,16 +101,18 @@ app.get(/^\/a\/{0,1}(.+)?/i, function (req, res) {
             log.debug(data);
             if (!data.cached) {
                 log.info('Cache Miss');
-                docClient.put({TableName: 'media-cache', Item: {
-                    path: IntelligenceBankConfig.host + req.url,
-                    expires: Math.floor((new Date).getTime() / 1000) + CACHE_EXPIRY * 360000,
-                    data: data
-                }}, function (err) {
-                    if (err) {
-                        log.error('cache store failed: ' + err);
-                        rollbar.reportMessageWithPayloadData('Error trying to cache asset', {error: err, request: req});
-                    }
-                });
+                if (_.size(data.items)) {
+                    docClient.put({TableName: 'media-cache', Item: {
+                        path: IntelligenceBankConfig.host + req.url,
+                        expires: Math.floor((new Date).getTime() / 1000) + CACHE_EXPIRY * 360000,
+                        data: data
+                    }}, function (err) {
+                        if (err) {
+                            log.error('cache store failed: ' + err);
+                            rollbar.reportMessageWithPayloadData('Error trying to cache asset', {error: err, request: req});
+                        }
+                    });
+                }
             } else {
                 log.info('Cache Hit');
             }
