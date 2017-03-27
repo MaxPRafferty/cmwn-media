@@ -93,7 +93,13 @@ var transformResourceToExpected = function (resourceLocationUrl, data) {
         ext = transformed.ext;
     }
     transformed.src = resourceLocationUrl + transformed.media_id + '.' + ext;
-    transformed.thumb = resourceLocationUrl + transformed.media_id + '.' + ext + '&compressiontype=2&size=25';
+    transformed.thumb = resourceLocationUrl + transformed.media_id + '.' + ext;
+    if (~ext.indexOf('?')) {
+        transformed.thumb += '&';
+    } else {
+        transformed.thumb += '?';
+    }
+    transformed.thumb += 'compressiontype=2&size=25';
 
     data.tags = data.tags || [];
 
