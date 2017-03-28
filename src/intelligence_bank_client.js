@@ -352,7 +352,7 @@ class IntelligenceBank {
                                 resolve({id: foundFolderId});
                             } else {
                                 //step 5.b: path does not exist
-                                reject('folder does not exist in subtree path ' + pathToMatch);
+                                reject({status: 404, message: 'resource does not exist at path ' + pathToMatch});
                             }
                         }).catch(reject);
                     }).catch(reject);
