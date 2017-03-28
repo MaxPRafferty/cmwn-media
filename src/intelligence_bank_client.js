@@ -288,6 +288,9 @@ class IntelligenceBank {
     }
 
     storeIdPathMap(path, id) {
+        if (path.indexOf('/') !== 0) {
+            path = '/' + path;
+        }
         console.log('attempting to store ' + path + ' at id ' + id);
         docClient.put({TableName: 'intelligence_bank_id_map', Item: {
             path,
