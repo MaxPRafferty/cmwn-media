@@ -9,7 +9,7 @@ var crypto = require('crypto');
 var mime = require('mime-types');
 var AWS = require('aws-sdk');
 var timeout = require('connect-timeout');
-var cliArgs = require('optimist').argv;
+var cliArgs = require('minimist')(process.argv.slice(2));
 var log = new Log((cliArgs.d || cliArgs.debug) ? 'debug' : 'info');
 
 var Util = require('./util.js');
