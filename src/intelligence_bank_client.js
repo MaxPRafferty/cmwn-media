@@ -295,7 +295,7 @@ class IntelligenceBank {
         return folder;
     }
 
-    storeIdPathMap(path, id) {
+    storeIdPathMap(path, id, asset_type) { //eslint-disable-line camelcase
         if (path.indexOf('/') !== 0) {
             path = '/' + path;
         }
@@ -303,7 +303,8 @@ class IntelligenceBank {
         docClient.put({TableName: 'intelligence_bank_id_map', Item: {
             path: md5(config.host) + path,
             expires: Math.floor((new Date).getTime() / 1000) + CACHE_EXPIRY * 360000,
-            id
+            id,
+            asset_type //eslint-disable-line camelcase
         }}, function (err) {
             if (err) {
                 log.error('cache store failed: ' + err);
@@ -312,7 +313,7 @@ class IntelligenceBank {
         });
     }
 
-    getFolderIdByPath(pathToMatch) {
+    getIdByPath(pathToMatch) {
         var self = this;
         if (pathToMatch === '/' || pathToMatch.length === 0) {
             return Promise.resolve({});
@@ -338,25 +339,28 @@ class IntelligenceBank {
                     var pathArr = pathToMatch.split('/');
                     var ownFolder = pathArr.pop();
                     //step 4: recur; pop last path item
-                    self.getFolderIdByPath(pathArr.join('/')).then(options => {
+                    self.getIdByPath(pathArr.join('/')).then(options => {
                         //step 5: get parent folder by ID
                         self.getFolderInfo(options).then(folder => {
                             var foundFolderId;
+                            var assetType;
                             //looping with each instead of filter because we already have the
                             //ids, might as well store their IDs for later, regardless of if
                             //we find the folder we want
                             _.each(folder.items, function (item) {
                                 if (item.name === ownFolder) {
                                     foundFolderId = item.media_id;
+                                    assetType = item.asset_type === 'folder' ? 'folder' : 'file';
                                 }
-                                if (item.asset_type === 'folder') {
-                                    self.storeIdPathMap(pathArr.join('/') + '/' + item.name, item.media_id);
-                                }
+                                //if (item.asset_type === 'folder') {
+                                self.storeIdPathMap(pathArr.join('/') + '/' + item.name, item.media_id, item.asset_type === 'folder' ? 'folder' : 'file');
+                                //}
+                                item.asset_type === 'folder' ? 'folder' : 'file';
                             });
                             if (foundFolderId != null) {
                                 //step 5.a: path found, resolve ID
-                                self.storeIdPathMap(pathToMatch || 'root', foundFolderId);
-                                resolve({id: foundFolderId});
+                                self.storeIdPathMap(pathToMatch || 'root', foundFolderId, assetType);
+                                resolve({id: foundFolderId, asset_type: assetType}); //eslint-disable-line camelcase
                             } else {
                                 //step 5.b: path does not exist
                                 reject({status: 404, message: 'resource does not exist at path ' + pathToMatch});
@@ -371,8 +375,12 @@ class IntelligenceBank {
     getFolderByPath(pathToMatch) {
         var self = this;
         return new Promise((resolve, reject) => {
-            self.getFolderIdByPath(pathToMatch).then(options => {
-                self.getFolderInfo(options).then(resolve).catch(reject);
+            self.getIdByPath(pathToMatch).then(options => {
+                if (options.asset_type === 'folder') {
+                    self.getFolderInfo(options).then(resolve).catch(reject);
+                } else {
+                    self.getAssetInfo(options).then(resolve).catch(reject);
+                }
             }).catch(reject);
         });
     }
@@ -396,25 +404,23 @@ class IntelligenceBank {
                     qs: {
                         searchterm: options.id
                     }
-                })
-                    .then(function (data) {
-                        try {
-                            log.info('got asset data for asset ' + options.id);
+                }).then(function (data) {
+                    try {
+                        log.info('got asset data for asset ' + options.id);
 
-                            if (!data || !data.doc || data.numFound !== '1') {
-                                log.warning('No response for server information');
-                                reject(data);
-                            } else {
-                                resolve(self.transformAsset(data.doc[0]));
-                            }
-                        } catch(err_) {
-                            log.error('bad data recieved from server: ' + err_);
-                            reject(err_);
+                        if (!data || !data.doc || data.numFound !== '1') {
+                            log.warning('No response for server information');
+                            reject(data);
+                        } else {
+                            resolve(self.transformAsset(data.doc[0]));
                         }
-                    })
-                    .catch(function (err_) {
+                    } catch(err_) {
+                        log.error('bad data recieved from server: ' + err_);
                         reject(err_);
-                    });
+                    }
+                }).catch(function (err_) {
+                    reject(err_);
+                });
             } else if (options.path) {
                 self.getFolderByPath(options.path)
                     .then(function (data) {
