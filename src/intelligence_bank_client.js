@@ -302,7 +302,8 @@ class IntelligenceBank {
         }
         log.info('attempting to cache path ' + path + ' at id ' + id);
         docClient.put({TableName: 'intelligence_bank_id_map', Item: {
-            path: md5(config.host) + path,
+            path,
+            environment: md5(config.host),
             expires: Math.floor((new Date(Date.now())).getTime()) + (MAP_CACHE_EXPIRY * 24 * 60 * 60 * 1000),
             id,
             asset_type //eslint-disable-line camelcase
@@ -329,7 +330,8 @@ class IntelligenceBank {
             var params = {
                 TableName: 'intelligence_bank_id_map',
                 Key: {
-                    'path': md5(config.host) + '/' + pathToMatch
+                    'path': '/' + pathToMatch,
+                    'environment': md5(config.host)
                 }
             };
             log.info('checking cache for ' + md5(config.host) + '/' + pathToMatch);
