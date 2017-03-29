@@ -1,10 +1,12 @@
 'use strict';
 var _ = require('lodash');
 var Log = require('log');
+var crypto = require('crypto');
 var cliArgs = require('optimist').argv;
 var log = new Log((cliArgs.d || cliArgs.debug) ? 'debug' : 'info');
 var httprequest = require('request');
 
+var config = require('../conf/config.json');
 var AWS = require('aws-sdk');
 AWS.config.loadFromPath('./conf/config.json');
 var docClient = new AWS.DynamoDB.DocumentClient();
@@ -25,6 +27,12 @@ const IB_ERRORS = {
     LOGIN: 'Invalid user name or password. Please try again.',
     BAD_PLATFORM: 'Invalid user or password'
 };
+
+function md5(stringToHash) {
+    var md5Hash = crypto.createHash('md5');
+    md5Hash.update(stringToHash);
+    return md5Hash.digest('hex');
+}
 
 class IntelligenceBank {
     constructor(options = {}) {
@@ -248,7 +256,7 @@ class IntelligenceBank {
                 })
                     .then(function (data) {
                         try {
-                            log.info('got folder data for folder ' + options.id);
+                            log.info('got folder data for folder ' + (options.id || 'root'));
                             if (data && data.folder) {
                                 // evidently data.response doesnt exist sometimes so... k.
                                 resolve(self.transformFolder(options.id, data));
@@ -291,9 +299,9 @@ class IntelligenceBank {
         if (path.indexOf('/') !== 0) {
             path = '/' + path;
         }
-        console.log('attempting to store ' + path + ' at id ' + id);
+        log.info('attempting to cache path ' + path + ' at id ' + id);
         docClient.put({TableName: 'intelligence_bank_id_map', Item: {
-            path,
+            path: md5(config.host) + path,
             expires: Math.floor((new Date).getTime() / 1000) + CACHE_EXPIRY * 360000,
             id
         }}, function (err) {
@@ -306,7 +314,6 @@ class IntelligenceBank {
 
     getFolderIdByPath(pathToMatch) {
         var self = this;
-        console.log('looking for ' + pathToMatch);
         if (pathToMatch === '/' || pathToMatch.length === 0) {
             return Promise.resolve({});
         }
@@ -314,18 +321,18 @@ class IntelligenceBank {
             var params = {
                 TableName: 'intelligence_bank_id_map',
                 Key: {
-                    'path': '/' + pathToMatch
+                    'path': md5(config.host) + '/' + pathToMatch
                 }
             };
+            log.info('checking cache for ' + md5(config.host) + '/' + pathToMatch);
             //step 1: check cache for path
             docClient.get(params, function (err, cachedOptions) {
-                console.log('Searching cache for /' + pathToMatch + ', got err: ' + err + ' and options ' + JSON.stringify(cachedOptions));
                 if (!err && cachedOptions.Item && cachedOptions.Item.id != null) {
-                    console.log('found ' + pathToMatch + ' with err ' + err + ' and options ' + JSON.stringify(cachedOptions));
+                    log.info('found ' + pathToMatch + ' in path map cache with err ' + err + ' and options ' + JSON.stringify(cachedOptions));
                     //step 2.b it is. Resolve by ID
                     resolve(cachedOptions.Item);
                 } else {
-                    console.log('cache miss for ' + pathToMatch);
+                    log.info('path mapping cache miss for ' + pathToMatch);
                     //step 2.a it isnt
                     //step 3: slice path
                     var pathArr = pathToMatch.split('/');
@@ -334,14 +341,11 @@ class IntelligenceBank {
                     self.getFolderIdByPath(pathArr.join('/')).then(options => {
                         //step 5: get parent folder by ID
                         self.getFolderInfo(options).then(folder => {
-                            //var transformedFolder = self.transformFolder(undefined, folder);
-                            //console.log('found folder :' + JSON.stringify(folder));
                             var foundFolderId;
                             //looping with each instead of filter because we already have the
                             //ids, might as well store their IDs for later, regardless of if
                             //we find the folder we want
                             _.each(folder.items, function (item) {
-                                console.log(JSON.stringify(item));
                                 if (item.name === ownFolder) {
                                     foundFolderId = item.media_id;
                                 }
@@ -374,8 +378,6 @@ class IntelligenceBank {
     }
 
     getAssetInfo(options) {
-        //this.getAssetFromTree(options);
-        console.log('looking for ' + JSON.stringify(options));
         var self = this;
         var resolve;
         var reject;
