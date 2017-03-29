@@ -6,6 +6,8 @@
     "ib_password": "<enter password",
     "ib_platformUrl": "changemyworldnow.intelligencebank.com",
     "rollbar_token": "<Rollbar Post-server item access token here>"
-    "host": "<url that will be added to media info>"
+    "host": "<url that will be added to media info>",
+    "standard_cache_expiry": 24,
+    "path_map_cahce_expiry": 28
 }
 

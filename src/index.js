@@ -72,7 +72,7 @@ if (cluster.isMaster) {
     });
 
 } else {
-    const CACHE_EXPIRY = 24; //hours
+    const CACHE_EXPIRY = config.standard_cache_expiry; //hours
 
     app.use(compression());
     app.use(timeout(45000));

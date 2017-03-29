@@ -10,7 +10,6 @@ var config = require('../conf/config.json');
 var AWS = require('aws-sdk');
 AWS.config.loadFromPath('./conf/config.json');
 var docClient = new AWS.DynamoDB.DocumentClient();
-const CACHE_EXPIRY = 1; //hours
 
 var rollbar = require('rollbar');
 
@@ -27,6 +26,8 @@ const IB_ERRORS = {
     LOGIN: 'Invalid user name or password. Please try again.',
     BAD_PLATFORM: 'Invalid user or password'
 };
+
+const MAP_CACHE_EXPIRY = config.path_map_cahce_expiry;
 
 function md5(stringToHash) {
     var md5Hash = crypto.createHash('md5');
@@ -302,7 +303,7 @@ class IntelligenceBank {
         log.info('attempting to cache path ' + path + ' at id ' + id);
         docClient.put({TableName: 'intelligence_bank_id_map', Item: {
             path: md5(config.host) + path,
-            expires: Math.floor((new Date).getTime() / 1000) + CACHE_EXPIRY * 360000,
+            expires: Math.floor((new Date(Date.now())).getTime()) + (MAP_CACHE_EXPIRY * 24 * 60 * 60 * 1000),
             id,
             asset_type //eslint-disable-line camelcase
         }}, function (err) {
@@ -324,6 +325,7 @@ class IntelligenceBank {
             pathToMatch = pathToMatch.slice(0, -1);
         }
         return new Promise((resolve, reject) => {
+            var now = new Date(Date.now());
             var params = {
                 TableName: 'intelligence_bank_id_map',
                 Key: {
@@ -333,12 +335,22 @@ class IntelligenceBank {
             log.info('checking cache for ' + md5(config.host) + '/' + pathToMatch);
             //step 1: check cache for path
             docClient.get(params, function (err, cachedOptions) {
-                if (!err && cachedOptions.Item && cachedOptions.Item.id != null) {
+                if (
+                    !err &&
+                    cachedOptions.Item &&
+                    cachedOptions.Item.id != null &&
+                    now < new Date(cachedOptions.Item.expires)
+                ) {
+                    console.log('cache time: ' + (new Date(cachedOptions.Item.expires) >= now));
                     log.info('found ' + pathToMatch + ' in path map cache with err ' + err + ' and options ' + JSON.stringify(cachedOptions));
                     //step 2.b it is. Resolve by ID
                     resolve(cachedOptions.Item);
                 } else {
-                    log.info('path mapping cache miss for ' + pathToMatch);
+                    if (cachedOptions.Item && now >= new Date(cachedOptions.Item.expires)) {
+                        log.info('cache expired for ' + pathToMatch);
+                    } else {
+                        log.info('path mapping cache miss for ' + pathToMatch);
+                    }
                     //step 2.a it isnt
                     //step 3: slice path
                     var pathArr = pathToMatch.split('/');
