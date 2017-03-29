@@ -96,7 +96,9 @@ if (cluster.isMaster) {
         var assetPromise;
 
         //unfortunately there is no non-breaking way around this global. Forgiveness.
-        global.noCache = req.query.bust != null;
+        global.caching = global.caching || {};
+        global.caching.noCache = req.query.bust != null;
+        global.caching.noMap = req.query['dangerous-no-map'] != null;
 
         var params = {
             TableName: 'media-cache',
@@ -308,7 +310,9 @@ if (cluster.isMaster) {
 
             //we only set this global in the /f so that downstream changes don't try to use it
             //and get a stale value. Don't use this global if it can be avoided!
-            global.noCache = req.query.bust != null;
+            global.caching = global.caching || {};
+            global.caching.noCache = req.query.bust != null;
+            global.caching.noMap = req.query['dangerous-no-map'] != null;
         };
 
         //initially, check if we have a valid stored file to send back

@@ -339,6 +339,7 @@ class IntelligenceBank {
                     !err &&
                     cachedOptions.Item &&
                     cachedOptions.Item.id != null &&
+                    !global.caching.noMap &&
                     now < new Date(cachedOptions.Item.expires)
                 ) {
                     console.log('cache time: ' + (new Date(cachedOptions.Item.expires) >= now));
