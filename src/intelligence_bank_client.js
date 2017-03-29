@@ -318,6 +318,11 @@ class IntelligenceBank {
         if (pathToMatch === '/' || pathToMatch.length === 0) {
             return Promise.resolve({});
         }
+
+        //ignore trailing slash in all instances except root, handled above
+        if (pathToMatch.split('').pop() === '/') {
+            pathToMatch = pathToMatch.slice(0, -1);
+        }
         return new Promise((resolve, reject) => {
             var params = {
                 TableName: 'intelligence_bank_id_map',
@@ -443,6 +448,7 @@ class IntelligenceBank {
     }
 
     getAssetUrl(file) {
+        console.log('gettin file: ' + file);
         var assetId = file.split('?')[0];
         var assetArray = assetId.split('.');
         var ext = assetArray.pop();
@@ -462,13 +468,13 @@ class IntelligenceBank {
         }
 
         if (assetId !== '0' && (assetId.indexOf('/') !== -1 || assetId.length !== 32)) {
-            this.getAssetIdByPath(assetId + '.' + ext)
-            .then(assetIdFromPath => {
+            this.getIdByPath(assetId)
+            .then(options => {
                 var resourceUrl =
                     IB_API_ENDPOINT + IB_PATHS.RESOURCE +
                     '?p10=' + this.apiKey +
                     '&p20=' + this.useruuid +
-                    '&fileuuid=' + assetIdFromPath +
+                    '&fileuuid=' + options.id +
                     '&ext=' + ext +
                     (query ? '&' + query : '');
                 log.info('trying to display image by path from ' + resourceUrl);
@@ -490,43 +496,6 @@ class IntelligenceBank {
         }
 
         return asset;
-    }
-
-    getAssetIdByPath(path) {
-        var ext;
-        var folderPath = path.split('/');
-        var filename = folderPath.pop();
-        folderPath = folderPath.join('/');
-
-        var resolve;
-        var reject;
-        var assetId = new Promise(function (resolve_, reject_) {
-            resolve = resolve_;
-            reject = reject_;
-        });
-
-        log.info('retrieving folder info for asset');
-        this.getFolderByPath(folderPath)
-        .then(folderInfo => {
-            if (!_.some(folderInfo.items, item => {
-
-                if (item.origfilename) {
-                    ext = item.origfilename.split('.').pop();
-                }
-
-                if (item.name + '.' + ext === filename) {
-                    resolve(item.media_id);
-                    return true;
-                }
-            })) {
-                reject({message: 'File not found', status: 404});
-            }
-        })
-        .catch(err => {
-            reject(err);
-        });
-
-        return assetId;
     }
 
     getTracking() {
