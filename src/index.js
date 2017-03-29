@@ -14,10 +14,9 @@ var log = new Log((cliArgs.d || cliArgs.debug) ? 'debug' : 'info');
 
 var Util = require('./util.js');
 var service = require('./intelligence_bank_service.js');
-var IntelligenceBankConfig = require('../conf/intelligence_bank_config.json');
-var rollbarKeys = require('../conf/rollbar.json');
+var config = require('../conf/config.json');
 
-AWS.config.loadFromPath('./conf/aws.json');
+AWS.config.loadFromPath('./conf/config.json');
 var docClient = new AWS.DynamoDB.DocumentClient();
 var rollbarOpts = {
     environment: 'Media'
@@ -44,10 +43,10 @@ function logOnTimedout(req, res, next){
 function applyCurrentEnvironment(data) {
     var item = _.cloneDeep(data);
     if (item.src) {
-        item.src = IntelligenceBankConfig.host + item.src;
+        item.src = config.host + item.src;
     }
     if (item.thumb) {
-        item.thumb = IntelligenceBankConfig.host + item.thumb;
+        item.thumb = config.host + item.thumb;
     }
     if (item.items) {
         item.items = _.map(item.items, asset => applyCurrentEnvironment(asset));
@@ -102,7 +101,7 @@ if (cluster.isMaster) {
         var params = {
             TableName: 'media-cache',
             Key: {
-                'path': IntelligenceBankConfig.host + require('url').parse(req.url).pathname
+                'path': config.host + require('url').parse(req.url).pathname
             }
         };
 
@@ -130,7 +129,7 @@ if (cluster.isMaster) {
                     log.info('Cache Miss');
                     if (_.size(data.items)) {
                         docClient.put({TableName: 'media-cache', Item: {
-                            path: IntelligenceBankConfig.host + require('url').parse(req.url).pathname,
+                            path: config.host + require('url').parse(req.url).pathname,
                             expires: Math.floor((new Date).getTime() / 1000) + CACHE_EXPIRY * 360000,
                             data: data
                         }}, function (err) {
@@ -357,10 +356,10 @@ if (cluster.isMaster) {
         res.status(200).send('LGTM');
     });
 
-    rollbar.init(rollbarKeys.token, rollbarOpts);
-    rollbar.handleUncaughtExceptions(rollbarKeys.token, rollbarOpts);
-    rollbar.handleUnhandledRejections(rollbarKeys.token, rollbarOpts);
-    app.use(rollbar.errorHandler(rollbarKeys.token, rollbarOpts));
+    rollbar.init(config.rollbar_token, rollbarOpts);
+    rollbar.handleUncaughtExceptions(config.rollbar_token, rollbarOpts);
+    rollbar.handleUnhandledRejections(config.rollbar_token, rollbarOpts);
+    app.use(rollbar.errorHandler(config.rollbar_token, rollbarOpts));
 
     app.listen(3000, function () {
         //service.init(storage);

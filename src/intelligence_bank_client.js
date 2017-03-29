@@ -6,7 +6,7 @@ var log = new Log((cliArgs.d || cliArgs.debug) ? 'debug' : 'info');
 var httprequest = require('request');
 
 var AWS = require('aws-sdk');
-AWS.config.loadFromPath('./conf/aws.json');
+AWS.config.loadFromPath('./conf/config.json');
 var docClient = new AWS.DynamoDB.DocumentClient();
 const CACHE_EXPIRY = 1; //hours
 

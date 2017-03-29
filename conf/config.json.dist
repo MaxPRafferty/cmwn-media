@@ -1,0 +1,11 @@
+{
+    "region": "us-east-1",
+    "accessKeyId": "<your access key>",
+    "secretAccessKey": "<your secret key>",
+    "ib_username": "<enter username>",
+    "ib_password": "<enter password",
+    "ib_platformUrl": "changemyworldnow.intelligencebank.com",
+    "rollbar_token": "<Rollbar Post-server item access token here>"
+    "host": "<url that will be added to media info>"
+}
+

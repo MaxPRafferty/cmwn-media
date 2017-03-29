@@ -1,8 +1,0 @@
-{
-    "client_id": "<box client id>",
-    "client_secret": "<box client secret>",
-    "client_email": "<box client email>",
-    "logLevel": "debug",
-    "env": "local",
-    "hostname": "https://media.server.com"
-}
