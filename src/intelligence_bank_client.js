@@ -1,13 +1,15 @@
 'use strict';
 var _ = require('lodash');
 var Log = require('log');
+var crypto = require('crypto');
 var cliArgs = require('optimist').argv;
 var log = new Log((cliArgs.d || cliArgs.debug) ? 'debug' : 'info');
 var httprequest = require('request');
 
+var config = require('../conf/config.json');
 var AWS = require('aws-sdk');
+AWS.config.loadFromPath('./conf/config.json');
 var docClient = new AWS.DynamoDB.DocumentClient();
-const CACHE_EXPIRY = 1; //hours
 
 var rollbar = require('rollbar');
 
@@ -24,6 +26,14 @@ const IB_ERRORS = {
     LOGIN: 'Invalid user name or password. Please try again.',
     BAD_PLATFORM: 'Invalid user or password'
 };
+
+const MAP_CACHE_EXPIRY = config.path_map_cahce_expiry;
+
+function md5(stringToHash) {
+    var md5Hash = crypto.createHash('md5');
+    md5Hash.update(stringToHash);
+    return md5Hash.digest('hex');
+}
 
 class IntelligenceBank {
     constructor(options = {}) {
@@ -247,7 +257,7 @@ class IntelligenceBank {
                 })
                     .then(function (data) {
                         try {
-                            log.info('got folder data for folder ' + options.id);
+                            log.info('got folder data for folder ' + (options.id || 'root'));
                             if (data && data.folder) {
                                 // evidently data.response doesnt exist sometimes so... k.
                                 resolve(self.transformFolder(options.id, data));
@@ -285,152 +295,117 @@ class IntelligenceBank {
         }
         return folder;
     }
-    /**
-     * getFolderByPath
-     * IB doesn't access items by path, so if we want to accomplish this, we need
-     * to walk down the tree and search for it. Our transform function in the IB
-     * service will be caching everything by both path and ID, however, so we will
-     * only be falling back to this source of truth as the cache expires.
-     */
-    getFolderByPath(pathToMatch, currentPath, currentFolderId, foldersSearched, noCache) {
-        log.info('walking folder tree in search of ' + pathToMatch + ', currently at ' + currentPath);
-        currentPath = currentPath == null ? '' : currentPath;
-        currentFolderId = currentFolderId == null ? '' : currentFolderId;
-        foldersSearched = foldersSearched == null ? 0 : foldersSearched;
-        noCache = noCache == null ? false : noCache;
-        var self = this;
-        var resolve;
-        var reject;
-        var folder = new Promise(function (resolve_, reject_) {
-            resolve = resolve_;
-            reject = reject_;
+
+    storeIdPathMap(path, id, asset_type) { //eslint-disable-line camelcase
+        if (path.indexOf('/') !== 0) {
+            path = '/' + path;
+        }
+        log.info('attempting to cache path ' + path + ' at id ' + id);
+        docClient.put({TableName: 'intelligence_bank_id_map', Item: {
+            path,
+            environment: md5(config.host),
+            expires: Math.floor((new Date(Date.now())).getTime()) + (MAP_CACHE_EXPIRY * 24 * 60 * 60 * 1000),
+            id,
+            asset_type //eslint-disable-line camelcase
+        }}, function (err) {
+            if (err) {
+                log.error('cache store failed: ' + err);
+                rollbar.reportMessageWithPayloadData('Error trying to cache IB path/id map', {error: err});
+            }
         });
-        var options = {
-            uri: self.baseUrl + IB_PATHS.RESOURCE,
-            qs: {
-                folderuuid: currentFolderId
-            }
-        };
-        // eslint-disable-next-line curly
-        if (currentFolderId === '') delete options.qs.folderuuid;
+    }
 
-        var params = {
-            TableName: 'intelligence_bank_cache',
-            Key: {
-                'path': pathToMatch
-            }
-        };
-
-        if (currentPath) {
-            params.Key.path = currentPath;
+    getIdByPath(pathToMatch) {
+        var self = this;
+        if (pathToMatch === '/' || pathToMatch.length === 0) {
+            return Promise.resolve({});
         }
 
-        docClient.get(params, function (err_, cacheData) {
-            //if uncached
-            if (err_ ||
-                !cacheData ||
-                !cacheData.Item ||
-                !cacheData.Item.data ||
-                cliArgs.n ||
-                cliArgs.nocache ||
-                noCache ||
-                global.noCache /* note the use of the global here. Don't copy that. */
-            ) {
-                self.makeHTTPCall(options)
-                    .then(function (data) {
-                        var newPath;
-                        //we are being naughty and using side effects of this transformation for
-                        //caching purposes, hence why we are calling it all the time.
-                        data.folderuuid = data.folderuuid || currentFolderId;
-                        var transformedFolder = self.transformFolder(undefined, data);
-
-                        //if we have arrived at our goal folder
-                        if (currentPath === pathToMatch) {
-                            resolve(transformedFolder);
-                        } else {
-                            var found = false;
-                            _.some(transformedFolder.items, function (item) {
-                                log.debug('searching in folder ' + item.name);
-                                if (item.name === pathToMatch.split('/')[foldersSearched]) {
-                                    found = true;
-                                    newPath = currentPath ? currentPath + '/' + item.name : item.name;
-                                    log.debug('found item at path ' + newPath);
-                                    self.getFolderByPath(pathToMatch, newPath, item.media_id || item.fileuuid, ++foldersSearched)
-                                        .then(function (data_) {
-                                            resolve(data_); //again, no need to double transform
-                                        })
-                                        .catch(function () {
-                                            reject('folder does not exist in subtree path ' + currentPath + item.name);
-                                        });
-                                    return true;
-                                }
-                            });
-                            if (!found) {
-                                reject({message: 'folder does not exist in subtree path ' + currentPath, status: 404});
-                            }
-                        }
-
-                        // only cache if the folder has items
-                        if (_.size(transformedFolder.items)) {
-                            docClient.put({TableName: 'intelligence_bank_cache', Item: {
-                                path: currentPath || 'root',
-                                expires: Math.floor((new Date).getTime() / 1000) + CACHE_EXPIRY * 360000,
-                                data: transformedFolder
-                            }}, function (err) {
-                                if (err) {
-                                    log.error('cache store failed: ' + err);
-                                    rollbar.reportMessageWithPayloadData('Error trying to cache asset', {error: err});
-                                }
-                            });
-                        }
-                    })
-                    .catch(function (err) {
-                        log.error(err);
-                        reject(err);
-                    });
-            } else {
-                var newPath;
-                var hit = false;
-                var transformedFolder = cacheData.Item.data;
-                if (params.Key.path === pathToMatch) {
-                    log.debug('folder path found.');
-                    resolve(transformedFolder);
-                } else {
-                    _.some(transformedFolder.items, function (item) {
-                        if (item.name === pathToMatch.split('/')[foldersSearched]) {
-                            hit = true;
-                            newPath = currentPath ? currentPath + '/' + item.name : item.name;
-                            self.getFolderByPath(pathToMatch, newPath, item.media_id || item.fileuuid, ++foldersSearched)
-                                .then(function (data_) {
-                                    resolve(data_); //again, no need to double transform
-                                })
-                                .catch(function () {
-                                    reject('folder does not exist in subtree path ' + currentPath + item.name);
-                                });
-                            return true;
-                        }
-                    });
-                    //see if we have a chance to recover from a bad cache response
-                    if (!hit && noCache){
-                        reject('folder does not exist in subtree path ' + currentPath);
-                    } else {
-                        self.getFolderByPath(arguments[0], arguments[1], arguments[2], arguments[3], true)
-                            .then(function (data_) {
-                                resolve(data_); //again, no need to double transform
-                            })
-                            .catch(function () {
-                                reject('folder does not exist in subtree path ' + currentPath);
-                            });
-                    }
+        //ignore trailing slash in all instances except root, handled above
+        if (pathToMatch.split('').pop() === '/') {
+            pathToMatch = pathToMatch.slice(0, -1);
+        }
+        return new Promise((resolve, reject) => {
+            var now = new Date(Date.now());
+            var params = {
+                TableName: 'intelligence_bank_id_map',
+                Key: {
+                    'path': '/' + pathToMatch,
+                    'environment': md5(config.host)
                 }
-            }
+            };
+            log.info('checking cache for ' + md5(config.host) + '/' + pathToMatch);
+            //step 1: check cache for path
+            docClient.get(params, function (err, cachedOptions) {
+                if (
+                    !err &&
+                    cachedOptions.Item &&
+                    cachedOptions.Item.id != null &&
+                    !global.caching.noMap &&
+                    now < new Date(cachedOptions.Item.expires)
+                ) {
+                    console.log('cache time: ' + (new Date(cachedOptions.Item.expires) >= now));
+                    log.info('found ' + pathToMatch + ' in path map cache with err ' + err + ' and options ' + JSON.stringify(cachedOptions));
+                    //step 2.b it is. Resolve by ID
+                    resolve(cachedOptions.Item);
+                } else {
+                    if (cachedOptions.Item && now >= new Date(cachedOptions.Item.expires)) {
+                        log.info('cache expired for ' + pathToMatch);
+                    } else {
+                        log.info('path mapping cache miss for ' + pathToMatch);
+                    }
+                    //step 2.a it isnt
+                    //step 3: slice path
+                    var pathArr = pathToMatch.split('/');
+                    var ownFolder = pathArr.pop();
+                    //step 4: recur; pop last path item
+                    self.getIdByPath(pathArr.join('/')).then(options => {
+                        //step 5: get parent folder by ID
+                        self.getFolderInfo(options).then(folder => {
+                            var foundFolderId;
+                            var assetType;
+                            //looping with each instead of filter because we already have the
+                            //ids, might as well store their IDs for later, regardless of if
+                            //we find the folder we want
+                            _.each(folder.items, function (item) {
+                                if (item.name === ownFolder) {
+                                    foundFolderId = item.media_id;
+                                    assetType = item.asset_type === 'folder' ? 'folder' : 'file';
+                                }
+                                //if (item.asset_type === 'folder') {
+                                self.storeIdPathMap(pathArr.join('/') + '/' + item.name, item.media_id, item.asset_type === 'folder' ? 'folder' : 'file');
+                                //}
+                                item.asset_type === 'folder' ? 'folder' : 'file';
+                            });
+                            if (foundFolderId != null) {
+                                //step 5.a: path found, resolve ID
+                                self.storeIdPathMap(pathToMatch || 'root', foundFolderId, assetType);
+                                resolve({id: foundFolderId, asset_type: assetType}); //eslint-disable-line camelcase
+                            } else {
+                                //step 5.b: path does not exist
+                                reject({status: 404, message: 'resource does not exist at path ' + pathToMatch});
+                            }
+                        }).catch(reject);
+                    }).catch(reject);
+                }
+            });
         });
+    }
 
-        return folder;
+    getFolderByPath(pathToMatch) {
+        var self = this;
+        return new Promise((resolve, reject) => {
+            self.getIdByPath(pathToMatch).then(options => {
+                if (options.asset_type === 'folder') {
+                    self.getFolderInfo(options).then(resolve).catch(reject);
+                } else {
+                    self.getAssetInfo(options).then(resolve).catch(reject);
+                }
+            }).catch(reject);
+        });
     }
 
     getAssetInfo(options) {
-        //this.getAssetFromTree(options);
         var self = this;
         var resolve;
         var reject;
@@ -449,25 +424,23 @@ class IntelligenceBank {
                     qs: {
                         searchterm: options.id
                     }
-                })
-                    .then(function (data) {
-                        try {
-                            log.info('got asset data for asset ' + options.id);
+                }).then(function (data) {
+                    try {
+                        log.info('got asset data for asset ' + options.id);
 
-                            if (!data || !data.doc || data.numFound !== '1') {
-                                log.warning('No response for server information');
-                                reject(data);
-                            } else {
-                                resolve(self.transformAsset(data.doc[0]));
-                            }
-                        } catch(err_) {
-                            log.error('bad data recieved from server: ' + err_);
-                            reject(err_);
+                        if (!data || !data.doc || data.numFound !== '1') {
+                            log.warning('No response for server information');
+                            reject(data);
+                        } else {
+                            resolve(self.transformAsset(data.doc[0]));
                         }
-                    })
-                    .catch(function (err_) {
+                    } catch(err_) {
+                        log.error('bad data recieved from server: ' + err_);
                         reject(err_);
-                    });
+                    }
+                }).catch(function (err_) {
+                    reject(err_);
+                });
             } else if (options.path) {
                 self.getFolderByPath(options.path)
                     .then(function (data) {
@@ -489,72 +462,8 @@ class IntelligenceBank {
         return file;
     }
 
-    /**
-     * getAssetFromTree
-     * There is some definite weirdness with the IB API. Namely, they seem to hate returning identities.
-     * As a result, asset information can only be retrieved by accessing the folder it belongs to.
-     * As of my current understanding of their API, only raw assets can be retrieved by direct ID.
-     * What this means, is that regardless of whether of not we are looking an asset up by ID or Path,
-     * we need to traverse the entire folder tree in search of it.
-     * While this is fine for now, if there is ANY sort of pagination this will likely become unsustainable
-     * At that point, we will need to write a cron job to just walk the tree, and prime the cache with all
-     * images nightly.
-     */
-    getAssetFromTree(targetOptions, currentPath, currentFolderId) {
-        currentPath = currentPath || '';
-        currentFolderId = currentFolderId || '';
-        var resolve;
-        var reject;
-        var folder = new Promise(function (resolve_, reject_) {
-            resolve = resolve_;
-            reject = reject_;
-        });
-        var options = {
-            uri: this.baseUrl + IB_PATHS.RESOURCE,
-            qs: {
-                folderuuid: currentFolderId
-            }
-        };
-        // eslint-disable-next-line curly
-        if (currentFolderId === '') delete options.qs.folderuuid;
-        this.makeHTTPCall(options)
-            .then(function (data) {
-                var foldersSearched = 0;
-                _.each(data.response.resource, function (item) {
-                    //we are being naughty and using side effects of this transformation for
-                    //caching purposes, hence why we are calling it all the time.
-                    var transformedItem = this.transformAsset(item);
-                    if (item.media_id === targetOptions.id) {
-                        resolve(transformedItem);
-                    }
-                    if (currentPath + '/' + item.title === targetOptions.path) {
-                        resolve(transformedItem);
-                    }
-                });
-                _.each(data.response.folder, function (item) {
-                    //this side effect transformation is particularly egregious, were not even using the
-                    //output! Eat your heart out, Church.
-                    //this.transformFolder(item);
-                    this.getAssetFromTree(targetOptions, currentPath + item.name, item.folderuuid)
-                        .then(function (data_) {
-                            resolve(data_); //again, no need to double transform
-                        })
-                        .catch(function () {
-                            foldersSearched++;
-                            if (foldersSearched === data.response.folder.length) {
-                                reject('folder does not exist in subtree path ' + currentPath + item.name);
-                            }
-                        });
-                });
-            })
-            .catch(function (err) {
-                log.error(err);
-                reject(err);
-            });
-        return folder;
-    }
-
     getAssetUrl(file) {
+        console.log('gettin file: ' + file);
         var assetId = file.split('?')[0];
         var assetArray = assetId.split('.');
         var ext = assetArray.pop();
@@ -574,13 +483,13 @@ class IntelligenceBank {
         }
 
         if (assetId !== '0' && (assetId.indexOf('/') !== -1 || assetId.length !== 32)) {
-            this.getAssetIdByPath(assetId + '.' + ext)
-            .then(assetIdFromPath => {
+            this.getIdByPath(assetId)
+            .then(options => {
                 var resourceUrl =
                     IB_API_ENDPOINT + IB_PATHS.RESOURCE +
                     '?p10=' + this.apiKey +
                     '&p20=' + this.useruuid +
-                    '&fileuuid=' + assetIdFromPath +
+                    '&fileuuid=' + options.id +
                     '&ext=' + ext +
                     (query ? '&' + query : '');
                 log.info('trying to display image by path from ' + resourceUrl);
@@ -602,43 +511,6 @@ class IntelligenceBank {
         }
 
         return asset;
-    }
-
-    getAssetIdByPath(path) {
-        var ext;
-        var folderPath = path.split('/');
-        var filename = folderPath.pop();
-        folderPath = folderPath.join('/');
-
-        var resolve;
-        var reject;
-        var assetId = new Promise(function (resolve_, reject_) {
-            resolve = resolve_;
-            reject = reject_;
-        });
-
-        log.info('retrieving folder info for asset');
-        this.getFolderByPath(folderPath)
-        .then(folderInfo => {
-            if (!_.some(folderInfo.items, item => {
-
-                if (item.origfilename) {
-                    ext = item.origfilename.split('.').pop();
-                }
-
-                if (item.name + '.' + ext === filename) {
-                    resolve(item.media_id);
-                    return true;
-                }
-            })) {
-                reject({message: 'File not found', status: 404});
-            }
-        })
-        .catch(err => {
-            reject(err);
-        });
-
-        return assetId;
     }
 
     getTracking() {

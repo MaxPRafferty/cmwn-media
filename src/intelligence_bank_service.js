@@ -3,10 +3,10 @@ var _ = require('lodash');
 var Log = require('log');
 var cliArgs = require('optimist').argv;
 var log = new Log((cliArgs.d || cliArgs.debug) ? 'debug' : 'info');
-var config = require('../conf/intelligence_bank_config.json');
+var config = require('../conf/config.json');
 
 var AWS = require('aws-sdk');
-AWS.config.loadFromPath('./conf/aws.json');
+AWS.config.loadFromPath('./conf/config.json');
 var docClient = new AWS.DynamoDB.DocumentClient();
 
 var IntelligenceBank = require('./intelligence_bank_client.js');
@@ -93,7 +93,13 @@ var transformResourceToExpected = function (resourceLocationUrl, data) {
         ext = transformed.ext;
     }
     transformed.src = resourceLocationUrl + transformed.media_id + '.' + ext;
-    transformed.thumb = resourceLocationUrl + transformed.media_id + '.' + ext + '&compressiontype=2&size=25';
+    transformed.thumb = resourceLocationUrl + transformed.media_id + '.' + ext;
+    if (~ext.indexOf('?')) {
+        transformed.thumb += '&';
+    } else {
+        transformed.thumb += '?';
+    }
+    transformed.thumb += 'compressiontype=2&size=25';
 
     data.tags = data.tags || [];
 
@@ -128,9 +134,9 @@ var transformResourceToExpected = function (resourceLocationUrl, data) {
 
 var ibClient = new IntelligenceBank({
     baseUrl: IB_API_URL,
-    username: config.username,
-    password: config.password,
-    platformUrl: config.platformUrl,
+    username: config.ib_username,
+    password: config.ib_password,
+    platformUrl: config.ib_platformUrl,
     ownUrl: config.host,
     //log: Log,
     transformFolder: transformFolderToExpected,
@@ -150,9 +156,9 @@ exports.init = function () {
         if (err || !Object.keys(data).length) {
             log.info('manually retrieving keys');
             ibClient.connect({
-                username: config.username,
-                password: config.password,
-                platformUrl: config.platformUrl,
+                username: config.ib_username,
+                password: config.ib_password,
+                platformUrl: config.ib_platformUrl,
                 ownUrl: config.host,
                 onConnect: function (data_) {
                     log.info('success, caching data');
@@ -177,7 +183,7 @@ exports.init = function () {
                 apiKey: data.Item.apiKey,
                 useruuid: data.Item.useruuid,
                 tracking: data.Item.tracking,
-                platformUrl: config.platformUrl,
+                platformUrl: config.ib_platformUrl,
                 ownUrl: config.host,
             });
         }

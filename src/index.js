@@ -9,15 +9,14 @@ var crypto = require('crypto');
 var mime = require('mime-types');
 var AWS = require('aws-sdk');
 var timeout = require('connect-timeout');
-var cliArgs = require('optimist').argv;
+var cliArgs = require('minimist')(process.argv.slice(2));
 var log = new Log((cliArgs.d || cliArgs.debug) ? 'debug' : 'info');
 
 var Util = require('./util.js');
 var service = require('./intelligence_bank_service.js');
-var IntelligenceBankConfig = require('../conf/intelligence_bank_config.json');
-var rollbarKeys = require('../conf/rollbar.json');
+var config = require('../conf/config.json');
 
-AWS.config.loadFromPath('./conf/aws.json');
+AWS.config.loadFromPath('./conf/config.json');
 var docClient = new AWS.DynamoDB.DocumentClient();
 var rollbarOpts = {
     environment: 'Media'
@@ -25,6 +24,12 @@ var rollbarOpts = {
 
 // Include the cluster module
 var cluster = require('cluster');
+
+function md5(stringToHash) {
+    var md5Hash = crypto.createHash('md5');
+    md5Hash.update(stringToHash);
+    return md5Hash.digest('hex');
+}
 
 function logOnTimedout(req, res, next){
     if (req.timedout) {
@@ -38,10 +43,10 @@ function logOnTimedout(req, res, next){
 function applyCurrentEnvironment(data) {
     var item = _.cloneDeep(data);
     if (item.src) {
-        item.src = IntelligenceBankConfig.host + item.src;
+        item.src = config.host + item.src;
     }
     if (item.thumb) {
-        item.thumb = IntelligenceBankConfig.host + item.thumb;
+        item.thumb = config.host + item.thumb;
     }
     if (item.items) {
         item.items = _.map(item.items, asset => applyCurrentEnvironment(asset));
@@ -58,8 +63,16 @@ if (cluster.isMaster) {
     for (var i = 0; i < cpuCount; i += 1) {
         cluster.fork();
     }
+    // Listen for dying workers
+    cluster.on('exit', function (worker) {
+        // Replace the dead worker,
+        // we're not sentimental
+        log.warn('Worker %d died :(', worker.id);
+        cluster.fork();
+    });
+
 } else {
-    const CACHE_EXPIRY = 1; //hours
+    const CACHE_EXPIRY = config.standard_cache_expiry; //hours
 
     app.use(compression());
     app.use(timeout(45000));
@@ -83,12 +96,14 @@ if (cluster.isMaster) {
         var assetPromise;
 
         //unfortunately there is no non-breaking way around this global. Forgiveness.
-        global.noCache = req.query.bust != null;
+        global.caching = global.caching || {};
+        global.caching.noCache = req.query.bust != null;
+        global.caching.noMap = req.query['dangerous-no-map'] != null;
 
         var params = {
             TableName: 'media-cache',
             Key: {
-                'path': IntelligenceBankConfig.host + req.url
+                'path': config.host + require('url').parse(req.url).pathname
             }
         };
 
@@ -116,7 +131,7 @@ if (cluster.isMaster) {
                     log.info('Cache Miss');
                     if (_.size(data.items)) {
                         docClient.put({TableName: 'media-cache', Item: {
-                            path: IntelligenceBankConfig.host + req.url,
+                            path: config.host + require('url').parse(req.url).pathname,
                             expires: Math.floor((new Date).getTime() / 1000) + CACHE_EXPIRY * 360000,
                             data: data
                         }}, function (err) {
@@ -167,8 +182,11 @@ if (cluster.isMaster) {
         log.debug(req.url);
         log.debug(req.params);
         var isFallbackAttempt = false;
+        var now = new Date(Date.now());
+        var expires = now;
 
         var s3StoreFound = false;
+        var s3CachedSize = 0;
         var key = '';
 
         var s3Bucket = 'cmwn-media-store';
@@ -202,6 +220,11 @@ if (cluster.isMaster) {
                 res.status(data.status || 500).send({error: data.err});
             }
             if (data && data.url) {
+                if (s3StoreFound && req.query.bust == null && cliArgs.n == null && cliArgs.nocache == null && now < expires) {
+                    res.set('location', data.url);
+                    res.status(301).send();
+                    return;
+                }
                 url = data.url;
                 url = url.split('').pop() !== '&' ? url : url.slice(0, -1);
                 res.contentType('image/png');
@@ -214,6 +237,7 @@ if (cluster.isMaster) {
                     }, function (e, response, body) {
                         var extension;
                         var mimeType;
+                        var reupload = true;
                         if (!e && response.statusCode === 200 && (body.length > 50 || !~body.indexOf('estimatedFileSize'))) {
                             try {
                                 if (response.statusCode !== 200) {
@@ -231,24 +255,29 @@ if (cluster.isMaster) {
                                 res.set('content-type', mimeType);
                                 res.contentType(mimeType);
                                 res.set('etag', crypto.createHash('md5').update(data.url).digest('hex'));
+                                reupload = +s3CachedSize !== +response.headers['content-length'];
                             } catch(error) {
                                 log.error('Some content headers could not be set. Attempting to return asset. Reason: ' + error);
                             }
 
-                            //don't waste the user's time storing before the asset has been returned
-                            setTimeout(function () {
-                                //store file result in s3
-                                s3.upload({
-                                    Key: Util.transformQueriedToS3ParamEncoded(req.get('host') + '/' + req.path.slice(3), req.query), //slice off the /f/ at the front of all requests
-                                    Body: body,
-                                    ACL: 'public-read'
-                                }, function (err_) {
-                                    if (err_) {
-                                        log.error('There was an error uploading your photo: ' + err_.message);
-                                    }
-                                    log.info('Successfully uploaded photo.');
-                                });
-                            }, 500);
+                            //if we are expired, reupload the files even if they are identical
+                            if (reupload || now >= expires) {
+                                //don't waste the user's time storing before the asset has been returned
+                                setTimeout(function () {
+                                    //store file result in s3
+                                    s3.upload({
+                                        Key: Util.transformQueriedToS3ParamEncoded(md5(req.get('host')) + '/' + req.path.slice(3), req.query), //slice off the /f/ at the front of all requests
+                                        Body: body,
+                                        ContentType: mimeType,
+                                        ACL: 'public-read'
+                                    }, function (err_) {
+                                        if (err_) {
+                                            log.error('There was an error uploading your photo: ' + err_.message);
+                                        }
+                                        log.info('Successfully uploaded photo.');
+                                    });
+                                }, 500);
+                            }
 
                             res.set('content-disposition', 'inline;');
                             res.send(body);
@@ -281,28 +310,27 @@ if (cluster.isMaster) {
 
             //we only set this global in the /f so that downstream changes don't try to use it
             //and get a stale value. Don't use this global if it can be avoided!
-            global.noCache = req.query.bust != null;
+            global.caching = global.caching || {};
+            global.caching.noCache = req.query.bust != null;
+            global.caching.noMap = req.query['dangerous-no-map'] != null;
         };
 
         //initially, check if we have a valid stored file to send back
-        s3.listObjects({Prefix: req.get('host')}, function (err_, data_) { //remove /f/
-            var now = new Date(Date.now());
-            var expires = now;
-            var searchKey = req.get('host') + '/' + Util.transformQueriedToS3ParamEncoded(req.path.slice(3), req.query);
+        s3.listObjects({Prefix: md5(req.get('host'))}, function (err_, data_) { //remove /f/
+            var searchKey = md5(req.get('host')) + '/' + Util.transformQueriedToS3ParamEncoded(req.path.slice(3), req.query);
             now.setHours(now.getHours());
             data_.Contents.map(function (photo) {
                 if (photo.Key === searchKey) {
                     s3StoreFound = true;
+                    s3CachedSize = photo.Size;
                     key = photo.Key;
                     expires = new Date(Date.parse(photo.LastModified));
                     expires.setHours(expires.getHours() + CACHE_EXPIRY);
                 }
             });
-            //until we have the update service, these need to expire after a day
-            //however, we dont want to delete them and make them unavailable, so
-            //we want to fall back to the s3 version even if it is expired
             log.info('asset found in s3?: ' + s3StoreFound);
             if (s3StoreFound && req.query.bust == null && cliArgs.n == null && cliArgs.nocache == null && now < expires) {
+            //if (s3StoreFound && req.query.bust == null && cliArgs.n == null && cliArgs.nocache == null) {
                 r({url: 'https://s3.amazonaws.com/' + s3Bucket + '/' + key });
             } else {
                 log.info('skipping s3');
@@ -332,10 +360,10 @@ if (cluster.isMaster) {
         res.status(200).send('LGTM');
     });
 
-    rollbar.init(rollbarKeys.token, rollbarOpts);
-    rollbar.handleUncaughtExceptions(rollbarKeys.token, rollbarOpts);
-    rollbar.handleUnhandledRejections(rollbarKeys.token, rollbarOpts);
-    app.use(rollbar.errorHandler(rollbarKeys.token, rollbarOpts));
+    rollbar.init(config.rollbar_token, rollbarOpts);
+    rollbar.handleUncaughtExceptions(config.rollbar_token, rollbarOpts);
+    rollbar.handleUnhandledRejections(config.rollbar_token, rollbarOpts);
+    app.use(rollbar.errorHandler(config.rollbar_token, rollbarOpts));
 
     app.listen(3000, function () {
         //service.init(storage);
